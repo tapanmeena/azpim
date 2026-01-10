@@ -46,7 +46,9 @@ export interface AzureActivationRequest {
 }
 
 export const fetchSubscriptions = async (credential: AzureCliCredential): Promise<AzureSubscription[]> => {
-  console.log(chalk.blueBright("Fetching Azure subscriptions..."));
+  if (process.env.AZP_CLI_DEBUG === "1") {
+    console.log(chalk.blueBright("Fetching Azure subscriptions..."));
+  }
 
   const subscriptionClient = new SubscriptionClient(credential);
   const subscriptions: AzureSubscription[] = [];
@@ -59,7 +61,9 @@ export const fetchSubscriptions = async (credential: AzureCliCredential): Promis
     });
   }
 
-  console.log(chalk.greenBright(`Fetched ${subscriptions.length} subscriptions.`));
+  if (process.env.AZP_CLI_DEBUG === "1") {
+    console.log(chalk.greenBright(`Fetched ${subscriptions.length} subscriptions.`));
+  }
   return subscriptions;
 };
 
@@ -69,7 +73,9 @@ export const fetchEligibleRolesForSubscription = async (
   subscriptionName: string,
   principalId: string
 ): Promise<EligibleAzureRole[]> => {
-  console.log(chalk.blueBright(`Fetching eligible roles for subscription ${subscriptionName}...`));
+  if (process.env.AZP_CLI_DEBUG === "1") {
+    console.log(chalk.blueBright(`Fetching eligible roles for subscription ${subscriptionName}...`));
+  }
 
   const client = new AuthorizationManagementClient(credential, subscriptionId);
   const scope = `/subscriptions/${subscriptionId}`;
@@ -95,11 +101,15 @@ export const fetchEligibleRolesForSubscription = async (
       }
     }
 
-    console.log(chalk.greenBright(`Fetched ${eligibleRoles.length} eligible roles for subscription ${subscriptionName}.`));
+    if (process.env.AZP_CLI_DEBUG === "1") {
+      console.log(chalk.greenBright(`Fetched ${eligibleRoles.length} eligible roles for subscription ${subscriptionName}.`));
+    }
     return eligibleRoles;
   } catch (error: any) {
     if (error.statusCode === 403 || error.code === "AuthorizationFailed") {
-      console.log(chalk.redBright(`Insufficient permissions to fetch eligible roles for subscription ${subscriptionId}.`));
+      if (process.env.AZP_CLI_DEBUG === "1") {
+        console.log(chalk.redBright(`Insufficient permissions to fetch eligible roles for subscription ${subscriptionId}.`));
+      }
       return [];
     }
     throw error;
@@ -112,7 +122,9 @@ export const listActiveAzureRoles = async (
   subscriptionName: string,
   principalId: string
 ): Promise<ActiveAzureRole[]> => {
-  console.log(chalk.blueBright(`Fetching active roles for subscription ${subscriptionName}...`));
+  if (process.env.AZP_CLI_DEBUG === "1") {
+    console.log(chalk.blueBright(`Fetching active roles for subscription ${subscriptionName}...`));
+  }
 
   const client = new AuthorizationManagementClient(credential, subscriptionId);
   const scope = `/subscriptions/${subscriptionId}`;
@@ -141,15 +153,31 @@ export const listActiveAzureRoles = async (
       }
     }
 
-    console.log(chalk.greenBright(`Fetched ${activeRoles.length} active roles for subscription ${subscriptionName}.`));
+    if (process.env.AZP_CLI_DEBUG === "1") {
+      console.log(chalk.greenBright(`Fetched ${activeRoles.length} active roles for subscription ${subscriptionName}.`));
+    }
     return activeRoles;
   } catch (error: any) {
     if (error.statusCode === 403 || error.code === "AuthorizationFailed") {
-      console.log(chalk.redBright(`Insufficient permissions to fetch active roles for subscription ${subscriptionId}.`));
+      if (process.env.AZP_CLI_DEBUG === "1") {
+        console.log(chalk.redBright(`Insufficient permissions to fetch active roles for subscription ${subscriptionId}.`));
+      }
       return [];
     }
     throw error;
   }
+};
+
+export const listActiveAzureRolesForUser = async (credential: AzureCliCredential, principalId: string): Promise<ActiveAzureRole[]> => {
+  const subscriptions = await fetchSubscriptions(credential);
+  const all: ActiveAzureRole[] = [];
+
+  for (const sub of subscriptions) {
+    const roles = await listActiveAzureRoles(credential, sub.subscriptionId, sub.displayName, principalId);
+    all.push(...roles);
+  }
+
+  return all;
 };
 
 export const activateAzureRole = async (credential: AzureCliCredential, request: AzureActivationRequest, subscriptionId: string): Promise<void> => {
@@ -177,25 +205,40 @@ export const activateAzureRole = async (credential: AzureCliCredential, request:
     justification: request.justification,
   };
 
-  console.log(chalk.blueBright(`Submitting activation request for role ${request.roleName}...`));
+  if (process.env.AZP_CLI_DEBUG === "1") {
+    console.log(chalk.blueBright(`Submitting activation request for role ${request.roleName}...`));
+  }
 
   try {
     const response = await client.roleAssignmentScheduleRequests.create(request.scope, requestName, requestBody);
 
-    console.log(chalk.greenBright("Activation request submitted successfully."));
-    console.log(chalk.greenBright(`Role Assignment Schedule Request ID: ${response.id}`));
+    if (process.env.AZP_CLI_DEBUG === "1") {
+      console.log(chalk.greenBright("Activation request submitted successfully."));
+      console.log(chalk.greenBright(`Role Assignment Schedule Request ID: ${response.id}`));
+    }
 
     if (response.status === "Approved") {
-      console.log(chalk.greenBright("Your role activation has been approved."));
+      if (process.env.AZP_CLI_DEBUG === "1") {
+        console.log(chalk.greenBright("Your role activation has been approved."));
+      }
     } else if (response.status === "Denied") {
-      console.log(chalk.redBright("Your role activation has been denied."));
+      if (process.env.AZP_CLI_DEBUG === "1") {
+        console.log(chalk.redBright("Your role activation has been denied."));
+      }
     } else if (response.status === "PendingApproval") {
-      console.log(chalk.yellowBright("Your role activation is pending approval."));
+      if (process.env.AZP_CLI_DEBUG === "1") {
+        console.log(chalk.yellowBright("Your role activation is pending approval."));
+      }
     } else {
-      console.log(chalk.yellowBright(`Your role activation is currently in status: ${response.status}`));
+      if (process.env.AZP_CLI_DEBUG === "1") {
+        console.log(chalk.yellowBright(`Your role activation is currently in status: ${response.status}`));
+      }
     }
   } catch (error) {
-    console.error(chalk.redBright("Failed to submit activation request:", error));
+    if (process.env.AZP_CLI_DEBUG === "1") {
+      console.error(chalk.redBright("Failed to submit activation request:"), error);
+    }
+    throw error;
   }
 };
 
@@ -217,7 +260,9 @@ export const deactivateAzureRole = async (
     linkedRoleEligibilityScheduleId: roleEligibilityScheduleId,
   });
 
-  console.log(chalk.greenBright(`Deactivation request submitted successfully - ${response.name}`));
+  if (process.env.AZP_CLI_DEBUG === "1") {
+    console.log(chalk.greenBright(`Deactivation request submitted successfully - ${response.name}`));
+  }
 };
 
 const getScopeDisplayName = (scope: string): string => {

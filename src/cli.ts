@@ -1,4 +1,5 @@
-import { AuthContext } from "@/auth";
+import inquirer from "inquirer";
+import { AuthContext } from "./auth";
 import {
   activateAzureRole,
   ActiveAzureRole,
@@ -6,8 +7,7 @@ import {
   fetchEligibleRolesForSubscription,
   fetchSubscriptions,
   listActiveAzureRoles,
-} from "@/azure-pim";
-import inquirer from "inquirer";
+} from "./azure-pim";
 
 const promptBackToMainMenuOrExit = async (message: string): Promise<void> => {
   const { next } = await inquirer.prompt<{ next: "back" | "exit" }>([

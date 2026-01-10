@@ -24,7 +24,9 @@ const getCredential = (): AzureCliCredential => {
 };
 
 export const authenticate = async (): Promise<AuthContext> => {
-  console.log(chalk.blueBright("Authenticating with Azure CLI..."));
+  if (process.env.AZP_CLI_DEBUG === "1") {
+    console.log(chalk.blueBright("Authenticating with Azure CLI..."));
+  }
 
   const credential = getCredential();
 
@@ -38,7 +40,9 @@ export const authenticate = async (): Promise<AuthContext> => {
   const userId = user.id;
   const userPrincipalName = user.userPrincipalName;
 
-  console.log(chalk.greenBright(`Authenticated as ${user.displayName} (ID: ${userPrincipalName})`));
+  if (process.env.AZP_CLI_DEBUG === "1") {
+    console.log(chalk.greenBright(`Authenticated as ${userPrincipalName} (ID: ${userId})`));
+  }
 
   return {
     credential,
