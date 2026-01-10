@@ -151,9 +151,12 @@ export const logBlank = (): void => {
  * Displays the application header/banner.
  */
 export const showHeader = (): void => {
+  const title = "Azure PIM CLI - Role Activation Manager";
+  const innerWidth = 52;
+  const paddedTitle = title.padStart(title.length + Math.floor((innerWidth - title.length) / 2)).padEnd(innerWidth);
   logBlank();
   console.log(chalk.cyan.bold("╔════════════════════════════════════════════════════╗"));
-  console.log(chalk.cyan.bold("║") + chalk.white.bold("     Azure PIM CLI - Role Activation Manager        ") + chalk.cyan.bold("║"));
+  console.log(chalk.cyan.bold("║") + chalk.white.bold(paddedTitle) + chalk.cyan.bold("║"));
   console.log(chalk.cyan.bold("╚════════════════════════════════════════════════════╝"));
   logBlank();
 };
@@ -209,16 +212,24 @@ export const formatStatus = (status: string): string => {
 
 /**
  * Displays a summary box for activation/deactivation results.
+ * Dynamically adjusts width based on content.
  */
 export const showSummary = (title: string, items: { label: string; value: string }[]): void => {
-  const boxWidth = 54;
-  const titleWidth = Math.max(0, boxWidth - 4 - title.length);
+  const minBoxWidth = 54;
+  // Calculate max content width from items (label + ": " + value)
+  const maxContentWidth = items.reduce((max, item) => {
+    const lineWidth = item.label.length + 2 + item.value.length + 2; // +2 for "│ " prefix
+    return Math.max(max, lineWidth);
+  }, 0);
+  // Use the larger of minBoxWidth, content width, or title width + 4
+  const effectiveBoxWidth = Math.max(minBoxWidth, maxContentWidth, title.length + 4);
+  const titleWidth = effectiveBoxWidth - 4 - title.length;
   logBlank();
   console.log(chalk.cyan.bold(`┌─ ${title} ${"─".repeat(titleWidth)}`));
   items.forEach((item) => {
     console.log(chalk.cyan("│ ") + chalk.dim(`${item.label}: `) + chalk.white(item.value));
   });
-  console.log(chalk.cyan.bold("└" + "─".repeat(boxWidth)));
+  console.log(chalk.cyan.bold("└" + "─".repeat(effectiveBoxWidth)));
   logBlank();
 };
 
