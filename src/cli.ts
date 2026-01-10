@@ -1,4 +1,6 @@
-import { AuthContext } from "@/auth";
+import chalk from "chalk";
+import inquirer from "inquirer";
+import { AuthContext } from "./auth";
 import {
   activateAzureRole,
   ActiveAzureRole,
@@ -6,7 +8,7 @@ import {
   fetchEligibleRolesForSubscription,
   fetchSubscriptions,
   listActiveAzureRoles,
-} from "@/azure-pim";
+} from "./azure-pim";
 import {
   formatActiveRole,
   formatRole,
@@ -19,9 +21,7 @@ import {
   logWarning,
   showDivider,
   showSummary,
-} from "@/ui";
-import chalk from "chalk";
-import inquirer from "inquirer";
+} from "./ui";
 
 const promptBackToMainMenuOrExit = async (message: string): Promise<void> => {
   logBlank();

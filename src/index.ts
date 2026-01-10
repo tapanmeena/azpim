@@ -1,8 +1,10 @@
-import { authenticate } from "@/auth";
-import { showMainMenu } from "@/cli";
-import { logBlank, logDim, logError, showHeader } from "@/ui";
+#!/usr/bin/env node
+
 import { Command } from "commander";
 import { version } from "../package.json";
+import { authenticate } from "./auth";
+import { showMainMenu } from "./cli";
+import { logBlank, logDim, logError, showHeader } from "./ui";
 
 const program = new Command();
 

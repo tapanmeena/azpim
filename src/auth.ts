@@ -1,7 +1,7 @@
 import { AzureCliCredential } from "@azure/identity";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
-import { failSpinner, showSummary, startSpinner, succeedSpinner } from "@/ui";
+import { failSpinner, showSummary, startSpinner, succeedSpinner } from "./ui";
 
 const GRAPH_SCOPES = ["https://graph.microsoft.com/.default"];
 

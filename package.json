@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Terminal app to manage Azure PIM role activations",
   "main": "dist/index.js",
+  "bin": {
+    "azp": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",

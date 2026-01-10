@@ -2,17 +2,7 @@ import { AuthorizationManagementClient } from "@azure/arm-authorization";
 import { SubscriptionClient } from "@azure/arm-resources-subscriptions";
 import { AzureCliCredential } from "@azure/identity";
 import { v4 as uuidv4 } from "uuid";
-import {
-  failSpinner,
-  formatStatus,
-  logBlank,
-  logError,
-  logSuccess,
-  logWarning,
-  startSpinner,
-  succeedSpinner,
-  warnSpinner,
-} from "@/ui";
+import { failSpinner, formatStatus, logBlank, logError, logSuccess, logWarning, startSpinner, succeedSpinner, warnSpinner } from "./ui";
 
 export interface AzureSubscription {
   subscriptionId: string;
