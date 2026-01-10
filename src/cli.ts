@@ -8,6 +8,7 @@ import {
   listActiveAzureRoles,
 } from "@/azure-pim";
 import {
+  formatActiveRole,
   formatRole,
   formatSubscription,
   logBlank,
@@ -292,11 +293,6 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
 
     const BACK_VALUE = "__BACK__";
 
-    const formatActiveRoleChoice = (role: ActiveAzureRole) => {
-      const startDate = new Date(role.startDateTime).toLocaleString();
-      return `${chalk.white.bold(role.roleName)} ${chalk.dim("@")} ${chalk.cyan(role.scopeDisplayName)} ${chalk.dim(`(${role.subscriptionName})`)} ${chalk.dim(`[Started: ${startDate}]`)}`;
-    };
-
     logBlank();
     const { rolesToDeactivate } = await inquirer.prompt([
       {
@@ -306,7 +302,7 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
         choices: [
           { name: chalk.dim("↩ Back to Main Menu"), value: BACK_VALUE },
           ...activeAzureRoles.map((role) => ({
-            name: formatActiveRoleChoice(role),
+            name: formatActiveRole(role.roleName, role.scopeDisplayName, role.subscriptionName, role.startDateTime),
             value: role.id,
             checked: false,
           })),

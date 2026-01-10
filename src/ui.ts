@@ -173,6 +173,14 @@ export const formatRole = (roleName: string, scopeDisplayName: string): string =
 };
 
 /**
+ * Formats an active role display string with additional metadata.
+ */
+export const formatActiveRole = (roleName: string, scopeDisplayName: string, subscriptionName: string, startDateTime: string): string => {
+  const startDate = new Date(startDateTime).toLocaleString();
+  return `${chalk.white.bold(roleName)} ${chalk.dim("@")} ${chalk.cyan(scopeDisplayName)} ${chalk.dim(`(${subscriptionName})`)} ${chalk.dim(`[Started: ${startDate}]`)}`;
+};
+
+/**
  * Formats a subscription display string.
  */
 export const formatSubscription = (displayName: string, subscriptionId: string): string => {
@@ -203,12 +211,14 @@ export const formatStatus = (status: string): string => {
  * Displays a summary box for activation/deactivation results.
  */
 export const showSummary = (title: string, items: { label: string; value: string }[]): void => {
+  const boxWidth = 54;
+  const titleWidth = Math.max(0, boxWidth - 4 - title.length);
   logBlank();
-  console.log(chalk.cyan.bold(`┌─ ${title} ${"─".repeat(Math.max(0, 50 - title.length))}`));
+  console.log(chalk.cyan.bold(`┌─ ${title} ${"─".repeat(titleWidth)}`));
   items.forEach((item) => {
     console.log(chalk.cyan("│ ") + chalk.dim(`${item.label}: `) + chalk.white(item.value));
   });
-  console.log(chalk.cyan.bold("└" + "─".repeat(54)));
+  console.log(chalk.cyan.bold("└" + "─".repeat(boxWidth)));
   logBlank();
 };
 
@@ -226,23 +236,21 @@ export const withSpinner = async <T>(
   successText?: string,
   failText?: string
 ): Promise<T> => {
-  const spinner = startSpinner(text);
+  startSpinner(text);
   try {
     const result = await operation();
     if (successText) {
-      spinner.succeed(chalk.green(successText));
+      succeedSpinner(successText);
     } else {
-      spinner.succeed();
+      succeedSpinner();
     }
-    currentSpinner = null;
     return result;
   } catch (error) {
     if (failText) {
-      spinner.fail(chalk.red(failText));
+      failSpinner(failText);
     } else {
-      spinner.fail();
+      failSpinner();
     }
-    currentSpinner = null;
     throw error;
   }
 };
