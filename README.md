@@ -76,6 +76,7 @@ node dist/index.js
 | ------------ | ----- | -------------------------------------- |
 | `activate`   | `a`   | Activate a role in Azure PIM (default) |
 | `deactivate` | `d`   | Deactivate a role in Azure PIM         |
+| `preset`     | -     | Manage reusable presets                |
 | `help`       | -     | Display help information               |
 
 ### One-command (non-interactive) activation
@@ -110,6 +111,69 @@ azp activate --no-interactive --dry-run \
    --role-name "Contributor" \
    --output json
 ```
+
+## Presets
+
+Presets let you save your daily activation/deactivation routines (subscription + role names + duration + justification) and reuse them with `--preset <name>`.
+
+### Presets file location
+
+By default, presets are stored in a per-user config file:
+
+- macOS/Linux: `~/.config/azp-cli/presets.json` (or `$XDG_CONFIG_HOME/azp-cli/presets.json`)
+- Windows: `%APPDATA%\azp-cli\presets.json`
+
+Override the location with:
+
+- `AZP_PRESETS_PATH=/path/to/presets.json`
+
+### Preset contents
+
+A preset can define one or both blocks:
+
+- `activate`: `subscriptionId`, `roleNames[]`, `durationHours`, `justification`, `allowMultiple`
+- `deactivate`: `subscriptionId` (optional), `roleNames[]`, `justification`, `allowMultiple`
+
+`justification` supports simple templates:
+
+- `${date}` → `YYYY-MM-DD`
+- `${datetime}` → ISO timestamp
+- `${userPrincipalName}` → resolved from Microsoft Graph `/me`
+
+### Common workflows
+
+```bash
+# Create a preset (interactive wizard)
+azp preset add daily-ops
+
+# Edit a preset (interactive wizard)
+azp preset edit daily-ops
+
+# You can also re-run add to overwrite an existing preset
+azp preset add daily-ops
+
+# List presets
+azp preset list
+
+# Show one preset
+azp preset show daily-ops
+
+# Use a preset (flags still override preset values)
+azp activate --preset daily-ops --yes
+
+# Non-interactive run using the preset
+azp activate --preset daily-ops --no-interactive --yes --output json
+
+# Deactivate using a preset
+azp deactivate --preset daily-ops --no-interactive --yes
+```
+
+### Defaults
+
+When you create a preset via `azp preset add`, you can optionally set it as the default for `activate` and/or `deactivate`.
+
+- Default presets are applied automatically when you run one-shot flows and you haven’t explicitly provided the required flags.
+- Example: after setting a default activate preset, `azp activate --no-interactive --yes` can work without specifying `--subscription-id`/`--role-name`.
 
 ### Example Session
 
