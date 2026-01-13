@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.0.0](https://github.com/tapanmeena/azp-cli/compare/v0.0.4...v1.0.0) (2026-01-13)
+
+
+### Features
+
+* add presets CLI for managing activation and deactivation presets ([67a50c5](https://github.com/tapanmeena/azp-cli/commit/67a50c545126bd8f9eed8f3f7ba24987a51f854a))
+
 ### [0.0.4](https://github.com/tapanmeena/azp-cli/compare/v0.0.3...v0.0.4) (2026-01-13)
 
 ### Features
