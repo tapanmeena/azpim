@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/tapanmeena/azp-cli/compare/v1.1.0...v1.2.0) (2026-01-13)
+
+
+### Features
+
+* enhance header display with improved formatting and styling ([7f88b3c](https://github.com/tapanmeena/azp-cli/commit/7f88b3c6dc49f141ab7925bb2d9b89aaf5f70bbf))
+
 ## [1.1.0](https://github.com/tapanmeena/azp-cli/compare/v1.0.0...v1.1.0) (2026-01-13)
 
 
