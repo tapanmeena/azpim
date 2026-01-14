@@ -14,6 +14,10 @@ A command-line interface tool for managing Azure Privileged Identity Management 
 - ✨ **Beautiful UI** - Polished terminal experience with spinners and colors
 - 🔄 **Multi-role Support** - Activate or deactivate multiple roles at once
 - 📊 **Status Tracking** - Real-time feedback on activation/deactivation status
+- 💾 **Presets** - Save and reuse activation/deactivation configurations
+- 🚀 **Non-interactive Mode** - CLI flags for scripting and automation
+- 🔔 **Update Notifications** - Automatic update checks with configurable behavior
+- 📤 **JSON Output** - Machine-readable output for integration with other tools
 
 ## Prerequisites
 
@@ -38,7 +42,22 @@ az account show
 
 ## Installation
 
-### From Source
+### Global Installation (Recommended)
+
+```bash
+# Using npm
+npm install -g azp-cli
+
+# Using pnpm
+pnpm add -g azp-cli
+
+# Using yarn
+yarn global add azp-cli
+```
+
+After installation, the `azp` command will be available globally.
+
+### From Source (Development)
 
 ```bash
 # Clone the repository
@@ -47,13 +66,12 @@ cd azp-cli
 
 # Install dependencies
 pnpm install
-# or
-npm install
 
 # Build the project
 pnpm build
-# or
-npm run build
+
+# Link globally for development
+npm link
 ```
 
 ## Usage
@@ -61,24 +79,38 @@ npm run build
 ### Running the CLI
 
 ```bash
-# Development mode
-pnpm dev
-# or
-npm run dev
+# After global installation
+azp
 
-# After building
-node dist/index.js
+# Or with specific commands
+azp activate
+azp deactivate
+azp preset list
+azp update
+
+# Development mode (from source)
+pnpm dev
 ```
 
 ### Commands
 
-| Command      | Alias | Description                            |
-| ------------ | ----- | -------------------------------------- |
-| `activate`   | `a`   | Activate a role in Azure PIM (default) |
-| `deactivate` | `d`   | Deactivate a role in Azure PIM         |
-| `update`     | -     | Check for a newer version              |
-| `preset`     | -     | Manage reusable presets                |
-| `help`       | -     | Display help information               |
+| Command      | Alias     | Description                            |
+| ------------ | --------- | -------------------------------------- |
+| `activate`   | `a`       | Activate a role in Azure PIM (default) |
+| `deactivate` | `d`       | Deactivate a role in Azure PIM         |
+| `preset`     | -         | Manage reusable presets                |
+| `update`     | `upgrade` | Check for a newer version              |
+| `help`       | -         | Display help information               |
+
+#### Preset Subcommands
+
+| Command         | Description                                  |
+| --------------- | -------------------------------------------- |
+| `preset list`   | List all available presets                   |
+| `preset show`   | Show details of a specific preset            |
+| `preset add`    | Add a new preset (interactive wizard)        |
+| `preset edit`   | Edit an existing preset (interactive wizard) |
+| `preset remove` | Remove a preset                              |
 
 ### Updates
 
@@ -102,9 +134,11 @@ The update-check cache is stored alongside presets in your config directory:
 - macOS/Linux: `~/.config/azp-cli/update-check.json` (or `$XDG_CONFIG_HOME/azp-cli/update-check.json`)
 - Windows: `%APPDATA%\azp-cli\update-check.json`
 
-### One-command (non-interactive) activation
+### Non-interactive Mode (Automation)
 
-Use flags to activate PIM roles directly without going through the main menu.
+Use flags to activate or deactivate PIM roles directly without going through the interactive menu, perfect for scripting and CI/CD workflows.
+
+#### Activation Examples
 
 ```bash
 # Activate a single role by name (non-interactive)
@@ -135,6 +169,43 @@ azp activate --no-interactive --dry-run \
    --output json
 ```
 
+#### Deactivation Examples
+
+```bash
+# Deactivate specific roles
+azp deactivate --no-interactive --yes \
+   --subscription-id <SUBSCRIPTION_GUID> \
+   --role-name "Owner" \
+   --justification "Task completed"
+
+# Deactivate across all subscriptions (omit subscription-id)
+azp deactivate --no-interactive --yes \
+   --role-name "Contributor" \
+   --allow-multiple
+```
+
+#### Available Flags
+
+**Common flags (activate/deactivate):**
+
+- `--no-interactive` - Disable interactive prompts
+- `-y, --yes` - Skip confirmation prompts
+- `--subscription-id <id>` - Target subscription (optional for deactivate)
+- `--role-name <name>` - Role name(s) to target (can be repeated)
+- `--allow-multiple` - Allow multiple role matches
+- `--dry-run` - Preview without submitting
+- `--output <text|json>` - Output format (default: text)
+- `--quiet` - Suppress non-essential output
+
+**Activation-specific:**
+
+- `--duration-hours <n>` - Duration (1-8 hours, default varies by role)
+- `--justification <text>` - Justification for activation
+
+**Deactivation-specific:**
+
+- `--justification <text>` - Justification for deactivation (optional)
+
 ## Presets
 
 Presets let you save your daily activation/deactivation routines (subscription + role names + duration + justification) and reuse them with `--preset <name>`.
@@ -163,23 +234,26 @@ A preset can define one or both blocks:
 - `${datetime}` → ISO timestamp
 - `${userPrincipalName}` → resolved from Microsoft Graph `/me`
 
-### Common workflows
+### Common Workflows
 
 ```bash
 # Create a preset (interactive wizard)
 azp preset add daily-ops
 
+# Create a preset with Azure integration (fetches subscriptions/roles)
+azp preset add daily-ops --from-azure
+
 # Edit a preset (interactive wizard)
 azp preset edit daily-ops
 
-# You can also re-run add to overwrite an existing preset
-azp preset add daily-ops
-
-# List presets
+# List all presets
 azp preset list
 
-# Show one preset
+# Show one preset details
 azp preset show daily-ops
+
+# Remove a preset
+azp preset remove daily-ops
 
 # Use a preset (flags still override preset values)
 azp activate --preset daily-ops --yes
@@ -293,6 +367,8 @@ git push --follow-tags
 4. Publish to npm (if desired):
 
 ```bash
+npm publish
+# or
 pnpm publish
 ```
 
@@ -301,11 +377,14 @@ pnpm publish
 ```
 azp-cli/
 ├── src/
-│   ├── index.ts      # CLI entry point and command definitions
-│   ├── auth.ts       # Azure authentication handling
-│   ├── azure-pim.ts  # Azure PIM API operations
-│   ├── cli.ts        # Interactive menu and user flows
-│   └── ui.ts         # Terminal UI utilities (spinners, formatting)
+│   ├── index.ts          # CLI entry point and command definitions
+│   ├── auth.ts           # Azure authentication handling
+│   ├── azure-pim.ts      # Azure PIM API operations
+│   ├── cli.ts            # Interactive menu and user flows
+│   ├── presets.ts        # Preset configuration and storage
+│   ├── presets-cli.ts    # Preset wizard flows
+│   ├── ui.ts             # Terminal UI utilities (spinners, formatting)
+│   └── update-check.ts   # Update notification system
 ├── package.json
 ├── tsconfig.json
 └── README.md

@@ -5,7 +5,6 @@ import inquirer from "inquirer";
 import { name as npmPackageName, version } from "../package.json";
 import { authenticate } from "./auth";
 import { activateOnce, deactivateOnce, showMainMenu } from "./cli";
-import { runPresetAddWizard, runPresetEditWizard } from "./presets-cli";
 import {
   expandTemplate,
   getDefaultPresetsFilePath,
@@ -13,12 +12,13 @@ import {
   listPresetNames,
   loadPresets,
   removePreset,
-  savePresets,
   resolveActivatePresetOptions,
   resolveDeactivatePresetOptions,
+  savePresets,
   setDefaultPresetName,
   upsertPreset,
 } from "./presets";
+import { runPresetAddWizard, runPresetEditWizard } from "./presets-cli";
 import { configureUi, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showHeader } from "./ui";
 import { checkForUpdate } from "./update-check";
 
@@ -98,7 +98,7 @@ const resolveValue = <T>(command: Command, optionName: string, cliValue: T, pres
 
 const program = new Command();
 
-program.name("azp-cli").description("Azure PIM CLI - A CLI tool for Azure Privilege Identity Management (PIM)").version(version);
+program.name("azp").description("Azure PIM CLI - A CLI tool for Azure Privilege Identity Management (PIM)").version(version);
 
 program
   .command("activate", { isDefault: true })
@@ -153,8 +153,7 @@ program
       const hasSubscriptionFromCli = getOptionValueSource(command, "subscriptionId") === "cli";
 
       const defaultPresetName = presets.data.defaults?.activatePreset;
-      const shouldUseDefaultPreset =
-        !explicitPresetName && Boolean(defaultPresetName) && (!hasSubscriptionFromCli || !hasRoleNamesFromCli);
+      const shouldUseDefaultPreset = !explicitPresetName && Boolean(defaultPresetName) && (!hasSubscriptionFromCli || !hasRoleNamesFromCli);
 
       const presetNameToUse = explicitPresetName ?? (shouldUseDefaultPreset ? defaultPresetName : undefined);
 
@@ -525,9 +524,7 @@ presetCommand
       const entry = getPreset(loaded.data, name);
       if (!entry) {
         const names = listPresetNames(loaded.data);
-        throw new Error(
-          `Preset not found: "${name}". Presets file: ${loaded.filePath}. Available: ${names.length ? names.join(", ") : "(none)"}`
-        );
+        throw new Error(`Preset not found: "${name}". Presets file: ${loaded.filePath}. Available: ${names.length ? names.join(", ") : "(none)"}`);
       }
 
       if (output === "json") {
