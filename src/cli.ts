@@ -23,6 +23,8 @@ import {
   showSummary,
 } from "./ui";
 
+import { runPresetsManager } from "./presets-cli";
+
 export type ActivateOnceOptions = {
   subscriptionId: string;
   roleNames: string[];
@@ -587,7 +589,7 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
   while (true) {
     showDivider();
     logBlank();
-    const { action } = await inquirer.prompt<{ action: "activate" | "deactivate" | "exit" }>([
+    const { action } = await inquirer.prompt<{ action: "activate" | "deactivate" | "presets" | "exit" }>([
       {
         type: "select",
         name: "action",
@@ -595,6 +597,7 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
         choices: [
           { name: chalk.green("▶ Activate Role(s)"), value: "activate" },
           { name: chalk.yellow("◼ Deactivate Role(s)"), value: "deactivate" },
+          { name: chalk.magenta("⚙ Presets..."), value: "presets" },
           { name: chalk.red("✕ Exit"), value: "exit" },
         ],
         default: "activate",
@@ -607,6 +610,9 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
         break;
       case "deactivate":
         await handleDeactivation(authContext);
+        break;
+      case "presets":
+        await runPresetsManager();
         break;
       case "exit":
         logBlank();

@@ -2,8 +2,9 @@ import chalk from "chalk";
 import inquirer from "inquirer";
 import { authenticate, type AuthContext } from "./auth";
 import { fetchEligibleRolesForSubscription, fetchSubscriptions } from "./azure-pim";
-import { formatSubscription, logBlank, logDim, logInfo, logWarning } from "./ui";
 import type { ActivatePresetOptions, DeactivatePresetOptions, PresetCommandName, PresetEntry } from "./presets";
+import { getPreset, listPresetNames, loadPresets, removePreset, savePresets, setDefaultPresetName, upsertPreset } from "./presets";
+import { formatSubscription, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showDivider } from "./ui";
 
 export type PresetAddWizardResult = {
   name: string;
@@ -171,9 +172,7 @@ const promptForAzureSelection = async (): Promise<{ authContext: AuthContext; su
   const ambiguous = cleanedRoles.filter((name) => (roleNameToCount.get(name) ?? 0) > 1);
   if (ambiguous.length > 0) {
     logBlank();
-    logWarning(
-      `Note: ${ambiguous.length} role name(s) have multiple eligible matches (different scopes): ${ambiguous.join(", ")}.`
-    );
+    logWarning(`Note: ${ambiguous.length} role name(s) have multiple eligible matches (different scopes): ${ambiguous.join(", ")}.`);
     logDim("When running activate/deactivate, azp may prompt unless allowMultiple is enabled or selection is interactive.");
   }
 
@@ -228,9 +227,7 @@ const promptForCommonFields = async (
     {
       type: "input",
       name: "justification",
-      message: chalk.cyan(
-        `Justification for ${command} (supports \${date}, \${datetime}, \${userPrincipalName}):`
-      ),
+      message: chalk.cyan(`Justification for ${command} (supports \${date}, \${datetime}, \${userPrincipalName}):`),
       default: defaults?.justification ?? defaultJustification,
     },
   ]);
@@ -415,14 +412,14 @@ export const runPresetEditWizard = async (args: EditWizardArgs): Promise<PresetE
           roleNames: existingEntry.activate?.roleNames,
         }
       : appliesTo === "deactivate"
-        ? {
-            subscriptionId: existingEntry.deactivate?.subscriptionId,
-            roleNames: existingEntry.deactivate?.roleNames,
-          }
-        : {
-            subscriptionId: existingEntry.activate?.subscriptionId ?? existingEntry.deactivate?.subscriptionId,
-            roleNames: existingEntry.activate?.roleNames ?? existingEntry.deactivate?.roleNames,
-          };
+      ? {
+          subscriptionId: existingEntry.deactivate?.subscriptionId,
+          roleNames: existingEntry.deactivate?.roleNames,
+        }
+      : {
+          subscriptionId: existingEntry.activate?.subscriptionId ?? existingEntry.deactivate?.subscriptionId,
+          roleNames: existingEntry.activate?.roleNames ?? existingEntry.deactivate?.roleNames,
+        };
 
   let subscriptionId: string | undefined;
   let roleNames: string[] = [];
@@ -497,4 +494,184 @@ export const runPresetEditWizard = async (args: EditWizardArgs): Promise<PresetE
   const setDefaultFor: PresetEditWizardResult["setDefaultFor"] | undefined = wantsDefault ? appliesTo : undefined;
 
   return { name: args.name, entry, setDefaultFor };
+};
+
+export const runPresetsManager = async (): Promise<void> => {
+  while (true) {
+    showDivider();
+    logBlank();
+
+    const presets = await loadPresets();
+
+    const { action } = await inquirer.prompt<{ action: "list" | "add" | "edit" | "remove" | "defaults" | "back" | "exit" }>([
+      {
+        type: "select",
+        name: "action",
+        message: chalk.cyan.bold("Presets Manager"),
+        choices: [
+          { name: chalk.white("≡ List presets"), value: "list" },
+          { name: chalk.green("+ Add preset"), value: "add" },
+          { name: chalk.yellow("✎ Edit preset"), value: "edit" },
+          { name: chalk.red("– Remove preset"), value: "remove" },
+          { name: chalk.magenta("⚙ Set defaults"), value: "defaults" },
+          { name: chalk.dim("↩ Back to Main Menu"), value: "back" },
+          { name: chalk.red("✕ Exit"), value: "exit" },
+        ],
+        default: "list",
+      },
+    ]);
+
+    try {
+      switch (action) {
+        case "list": {
+          const names = listPresetNames(presets.data);
+          logBlank();
+          if (names.length === 0) {
+            logDim(`No presets found. File: ${presets.filePath}`);
+          } else {
+            const defaultActivate = presets.data.defaults?.activatePreset;
+            const defaultDeactivate = presets.data.defaults?.deactivatePreset;
+            logInfo(`Presets file: ${presets.filePath}`);
+            for (const name of names) {
+              const entry = getPreset(presets.data, name);
+              const tags: string[] = [];
+              if (name === defaultActivate) tags.push("default-activate");
+              if (name === defaultDeactivate) tags.push("default-deactivate");
+              logBlank();
+              logInfo(`- ${name}${tags.length ? ` (${tags.join(", ")})` : ""}`);
+              if (entry?.description) logDim(`  ${entry.description}`);
+            }
+          }
+          break;
+        }
+
+        case "add": {
+          const names = listPresetNames(presets.data);
+          const result = await runPresetAddWizard({ existingNames: names, fromAzure: undefined });
+          let nextData = upsertPreset(presets.data, result.name, result.entry);
+          if (result.setDefaultFor) {
+            if (result.setDefaultFor === "both") {
+              nextData = setDefaultPresetName(nextData, "activate", result.name);
+              nextData = setDefaultPresetName(nextData, "deactivate", result.name);
+            } else {
+              nextData = setDefaultPresetName(nextData, result.setDefaultFor, result.name);
+            }
+          }
+          await savePresets(presets.filePath, nextData);
+          logBlank();
+          logSuccess(`Preset "${result.name}" saved to ${presets.filePath}`);
+          break;
+        }
+
+        case "edit": {
+          const names = listPresetNames(presets.data);
+          if (names.length === 0) {
+            logWarning("No presets to edit.");
+            break;
+          }
+          const { name } = await inquirer.prompt<{ name: string }>([
+            {
+              type: "select",
+              name: "name",
+              message: chalk.cyan("Select preset to edit:"),
+              choices: names.map((n) => ({ name: n, value: n })),
+            },
+          ]);
+          const existing = getPreset(presets.data, name)!;
+          const result = await runPresetEditWizard({ name, existingEntry: existing });
+          let nextData = upsertPreset(presets.data, result.name, result.entry);
+          if (result.setDefaultFor) {
+            if (result.setDefaultFor === "both") {
+              nextData = setDefaultPresetName(nextData, "activate", result.name);
+              nextData = setDefaultPresetName(nextData, "deactivate", result.name);
+            } else {
+              nextData = setDefaultPresetName(nextData, result.setDefaultFor, result.name);
+            }
+          }
+          await savePresets(presets.filePath, nextData);
+          logBlank();
+          logSuccess(`Preset "${result.name}" updated in ${presets.filePath}`);
+          break;
+        }
+
+        case "remove": {
+          const names = listPresetNames(presets.data);
+          if (names.length === 0) {
+            logWarning("No presets to remove.");
+            break;
+          }
+          const { name } = await inquirer.prompt<{ name: string }>([
+            {
+              type: "select",
+              name: "name",
+              message: chalk.cyan("Select preset to remove:"),
+              choices: names.map((n) => ({ name: n, value: n })),
+            },
+          ]);
+          const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
+            {
+              type: "confirm",
+              name: "confirm",
+              message: chalk.yellow(`Are you sure you want to remove preset "${name}"?`),
+              default: false,
+            },
+          ]);
+          if (!confirm) break;
+
+          let nextData = removePreset(presets.data, name);
+          // Clear defaults pointing to the removed name
+          if (presets.data.defaults?.activatePreset === name) nextData = setDefaultPresetName(nextData, "activate", undefined);
+          if (presets.data.defaults?.deactivatePreset === name) nextData = setDefaultPresetName(nextData, "deactivate", undefined);
+
+          await savePresets(presets.filePath, nextData);
+          logBlank();
+          logSuccess(`Preset "${name}" removed from ${presets.filePath}`);
+          break;
+        }
+
+        case "defaults": {
+          const names = ["(none)", ...listPresetNames(presets.data)];
+          const { activate } = await inquirer.prompt<{ activate: string }>([
+            {
+              type: "select",
+              name: "activate",
+              message: chalk.cyan("Default preset for activate (choose none to unset):"),
+              choices: names.map((n) => ({ name: n, value: n })),
+              default: presets.data.defaults?.activatePreset ?? "(none)",
+            },
+          ]);
+          const { deactivate } = await inquirer.prompt<{ deactivate: string }>([
+            {
+              type: "select",
+              name: "deactivate",
+              message: chalk.cyan("Default preset for deactivate (choose none to unset):"),
+              choices: names.map((n) => ({ name: n, value: n })),
+              default: presets.data.defaults?.deactivatePreset ?? "(none)",
+            },
+          ]);
+
+          let nextData = { ...presets.data } as any;
+          nextData = setDefaultPresetName(nextData, "activate", activate === "(none)" ? undefined : activate);
+          nextData = setDefaultPresetName(nextData, "deactivate", deactivate === "(none)" ? undefined : deactivate);
+
+          await savePresets(presets.filePath, nextData);
+          logBlank();
+          logSuccess(`Defaults updated in ${presets.filePath}`);
+          break;
+        }
+
+        case "back":
+          return;
+
+        case "exit":
+          logBlank();
+          logDim("Goodbye! 👋");
+          logBlank();
+          process.exit(0);
+      }
+    } catch (err: any) {
+      logBlank();
+      logError(`An error occurred: ${err?.message ?? String(err)}`);
+    }
+  }
 };
