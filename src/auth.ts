@@ -1,3 +1,5 @@
+import { exec } from "child_process";
+import { promisify } from "util";
 import { AzureCliCredential } from "@azure/identity";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
@@ -23,7 +25,18 @@ const getCredential = (): AzureCliCredential => {
   return cachedCredential;
 };
 
+const execAsync = promisify(exec);
+
+const checkAzureCliInstalled = async (): Promise<void> => {
+  try {
+    await execAsync("az --version");
+  } catch (error) {
+    throw new Error("Azure CLI is not installed or not in PATH. Please install it to use this tool.");
+  }
+};
+
 export const authenticate = async (): Promise<AuthContext> => {
+  await checkAzureCliInstalled();
   startSpinner("Authenticating with Azure CLI...");
 
   try {
