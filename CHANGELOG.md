@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.3.0](https://github.com/tapanmeena/azp-cli/compare/v1.2.0...v1.3.0) (2026-01-14)
+
+
+### Features
+
+* add Azure CLI installation check before authentication ([c291268](https://github.com/tapanmeena/azp-cli/commit/c291268359854e7da74a0cea046741c0449609d7))
+* update package.json with repository type; rename CLI command to 'check-update' and adjust header formatting ([8ef92d4](https://github.com/tapanmeena/azp-cli/commit/8ef92d4da233459f7631f2bf4f85ed5a4113c918))
+* update README with new features and installation instructions; refactor CLI command name to 'azp' ([24510f7](https://github.com/tapanmeena/azp-cli/commit/24510f78f44f9e1570d93c8b750aa6a41b27b62e))
+
 ## [1.2.0](https://github.com/tapanmeena/azp-cli/compare/v1.1.0...v1.2.0) (2026-01-13)
 
 
