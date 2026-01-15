@@ -122,11 +122,12 @@ export const activateOnce = async (authContext: AuthContext, options: ActivateOn
   logBlank();
   logInfo("Resolving subscription and eligible roles...");
 
-  const subscriptions = await fetchSubscriptions(authContext.credential);
-  const selectedSubscription = subscriptions.find((s) => s.subscriptionId === options.subscriptionId);
-  if (!selectedSubscription) {
-    throw new Error(`Subscription not found for --subscription-id=${options.subscriptionId}`);
-  }
+  // Allow users without Reader permissions to activate roles via PIM
+  // as long as they have eligible roles in the subscription.
+  const selectedSubscription = {
+    subscriptionId: options.subscriptionId,
+    displayName: `${options.subscriptionId} (name unavailable)`,
+  };
 
   const eligibleRoles = await fetchEligibleRolesForSubscription(
     authContext.credential,
@@ -342,18 +343,26 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
   logBlank();
   logInfo("Resolving subscriptions and active roles...");
 
-  const subscriptions = await fetchSubscriptions(authContext.credential);
-  if (subscriptions.length === 0) {
-    throw new Error("No subscriptions found.");
-  }
-
-  let targetSubscriptions = subscriptions;
+  // const subscriptions = await fetchSubscriptions(authContext.credential);
+  // if (subscriptions.length === 0) {
+  //   throw new Error("No subscriptions found.");
+  // }
+  let targetSubscriptions: Array<{ subscriptionId: string; displayName: string }>;
   if (options.subscriptionId?.trim()) {
-    const selectedSubscription = subscriptions.find((s) => s.subscriptionId === options.subscriptionId);
-    if (!selectedSubscription) {
-      throw new Error(`Subscription not found for --subscription-id=${options.subscriptionId}`);
+    // Allow users without Reader permissions to deactivate roles via PIM
+    // as long as they have active roles in the subscription.
+    targetSubscriptions = [
+      {
+        subscriptionId: options.subscriptionId,
+        displayName: `${options.subscriptionId} (name unavailable)`,
+      },
+    ];
+  } else {
+    const subscriptions = await fetchSubscriptions(authContext.credential);
+    if (subscriptions.length === 0) {
+      throw new Error("No subscriptions found. use --subscription-id to specify a subscription.");
     }
-    targetSubscriptions = [selectedSubscription];
+    targetSubscriptions = subscriptions;
   }
 
   let allActiveRoles: ActiveAzureRole[] = [];
@@ -629,45 +638,80 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
     logInfo("Starting role activation flow...");
     logBlank();
 
-    const subscriptions = await fetchSubscriptions(authContext.credential);
+    let subscriptions = await fetchSubscriptions(authContext.credential);
+
+    let selectedSubscription: { subscriptionId: string; displayName: string } | undefined;
 
     if (subscriptions.length === 0) {
       logWarning("No subscriptions found.");
-      await promptBackToMainMenuOrExit("What would you like to do?");
-      return;
-    }
+      const { action } = await inquirer.prompt<{ action: "enter" | "back" | "exit" }>([
+        {
+          type: "select",
+          name: "action",
+          message: chalk.yellow("No subscriptions found. What would you like to do?"),
+          choices: [
+            { name: chalk.cyan("Enter subscription ID manually"), value: "enter" },
+            { name: chalk.cyan("↩ Back to Main Menu"), value: "back" },
+            { name: chalk.red("✕ Exit"), value: "exit" },
+          ],
+          default: "enter",
+        },
+      ]);
 
-    const BACK_VALUE = "__BACK__";
-    const subscriptionChoices = subscriptions
-      .map((sub) => ({
-        name: formatSubscription(sub.displayName, sub.subscriptionId),
-        value: sub.subscriptionId,
-      }))
-      .concat([{ name: chalk.dim("↩ Back to Main Menu"), value: BACK_VALUE }]);
+      if (action === "back") {
+        return;
+      } else if (action === "exit") {
+        logBlank();
+        logDim("Goodbye! 👋");
+        process.exit(0);
+      } else {
+        const { manualId } = await inquirer.prompt<{ manualId: string }>([
+          {
+            type: "input",
+            name: "manualId",
+            message: chalk.cyan("Subscription ID:"),
+            validate: (value) => {
+              if (!value || !value.trim()) return chalk.red("Please enter a subscription ID.");
+              return true;
+            },
+          },
+        ]);
+        selectedSubscription = { subscriptionId: manualId.trim(), displayName: manualId.trim() };
+      }
+    } else {
+      const BACK_VALUE = "__BACK__";
+      const subscriptionChoices = subscriptions
+        .map((sub) => ({
+          name: formatSubscription(sub.displayName, sub.subscriptionId),
+          value: sub.subscriptionId,
+        }))
+        .concat([{ name: chalk.dim("↩ Back to Main Menu"), value: BACK_VALUE }]);
 
-    logBlank();
-    const { selectedSubscriptionId } = await inquirer.prompt<{
-      selectedSubscriptionId: string;
-    }>([
-      {
-        type: "select",
-        name: "selectedSubscriptionId",
-        message: chalk.cyan("Select a subscription:"),
-        choices: subscriptionChoices,
-        pageSize: 15,
-        default: subscriptionChoices[0]?.value,
-      },
-    ]);
+      logBlank();
+      const { selectedSubscriptionId } = await inquirer.prompt<{
+        selectedSubscriptionId: string;
+      }>([
+        {
+          type: "select",
+          name: "selectedSubscriptionId",
+          message: chalk.cyan("Select a subscription:"),
+          choices: subscriptionChoices,
+          pageSize: 15,
+          default: subscriptionChoices[0]?.value,
+        },
+      ]);
 
-    if (selectedSubscriptionId === BACK_VALUE) {
-      logDim("Returning to main menu...");
-      return;
-    }
+      if (selectedSubscriptionId === BACK_VALUE) {
+        logDim("Returning to main menu...");
+        return;
+      }
 
-    const selectedSubscription = subscriptions.find((sub) => sub.subscriptionId === selectedSubscriptionId);
-    if (!selectedSubscription) {
-      logError("Selected subscription not found.");
-      return;
+      const found = subscriptions.find((sub) => sub.subscriptionId === selectedSubscriptionId);
+      if (!found) {
+        logError("Selected subscription not found.");
+        return;
+      }
+      selectedSubscription = { subscriptionId: found.subscriptionId, displayName: found.displayName };
     }
 
     const eligibleRoles = await fetchEligibleRolesForSubscription(
@@ -815,13 +859,45 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
     logInfo("Starting role deactivation flow...");
     logBlank();
 
-    const subscriptions = await fetchSubscriptions(authContext.credential);
+    let subscriptions = await fetchSubscriptions(authContext.credential);
     let activeAzureRoles: ActiveAzureRole[] = [];
 
     if (subscriptions.length === 0) {
       logWarning("No subscriptions found.");
-      await promptBackToMainMenuOrExit("What would you like to do?");
-      return;
+      const { action } = await inquirer.prompt<{ action: "enter" | "back" | "exit" }>([
+        {
+          type: "select",
+          name: "action",
+          message: chalk.yellow("No subscriptions found. What would you like to do?"),
+          choices: [
+            { name: chalk.cyan("Enter subscription ID manually"), value: "enter" },
+            { name: chalk.cyan("↩ Back to Main Menu"), value: "back" },
+            { name: chalk.red("✕ Exit"), value: "exit" },
+          ],
+          default: "enter",
+        },
+      ]);
+
+      if (action === "back") {
+        return;
+      } else if (action === "exit") {
+        logBlank();
+        logDim("Goodbye! 👋");
+        process.exit(0);
+      } else {
+        const { manualId } = await inquirer.prompt<{ manualId: string }>([
+          {
+            type: "input",
+            name: "manualId",
+            message: chalk.cyan("Subscription ID to inspect (for active roles):"),
+            validate: (value) => {
+              if (!value || !value.trim()) return chalk.red("Please enter a subscription ID.");
+              return true;
+            },
+          },
+        ]);
+        subscriptions.push({ subscriptionId: manualId.trim(), displayName: manualId.trim(), tenantId: "" } as any);
+      }
     }
 
     for (const sub of subscriptions) {

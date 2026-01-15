@@ -1,9 +1,9 @@
-import { exec } from "child_process";
-import { promisify } from "util";
 import { AzureCliCredential } from "@azure/identity";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
-import { failSpinner, showSummary, startSpinner, succeedSpinner } from "./ui";
+import { exec } from "child_process";
+import { promisify } from "util";
+import { failSpinner, showUserInfo, startSpinner, succeedSpinner } from "./ui";
 
 const GRAPH_SCOPES = ["https://graph.microsoft.com/.default"];
 
@@ -53,10 +53,7 @@ export const authenticate = async (): Promise<AuthContext> => {
     const userPrincipalName = user.userPrincipalName;
 
     succeedSpinner("Authentication successful");
-    showSummary("User Information", [
-      { label: "Name", value: user.displayName },
-      { label: "Email", value: userPrincipalName },
-    ]);
+    showUserInfo(user.displayName, userPrincipalName);
 
     return {
       credential,

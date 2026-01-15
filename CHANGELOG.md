@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.4.0](https://github.com/tapanmeena/azp-cli/compare/v1.3.1...v1.4.0) (2026-01-15)
+
+
+### Features
+
+* add presets management functionality to CLI ([253c66c](https://github.com/tapanmeena/azp-cli/commit/253c66c3691d31f7bc032c293b069667a6a148b5))
+* add subscription reader support for role activation and deactivation ([182027b](https://github.com/tapanmeena/azp-cli/commit/182027be73accf0d9f3b13385b28da1701b50297))
+* utilize cached update check result if within interval ([b4c999d](https://github.com/tapanmeena/azp-cli/commit/b4c999d37fcbbb23ba9d2f637833ba48dd7a38e9))
+
 ### [1.3.1](https://github.com/tapanmeena/azp-cli/compare/v1.3.0...v1.3.1) (2026-01-14)
 
 ## [1.3.0](https://github.com/tapanmeena/azp-cli/compare/v1.2.0...v1.3.0) (2026-01-14)

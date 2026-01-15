@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import ora, { type Ora } from "ora";
+import { version } from "../package.json";
 
 type UiOptions = {
   quiet: boolean;
@@ -193,50 +194,54 @@ export const logBlank = (): void => {
 // ===============================
 
 /**
- * Displays the application header/banner.
+ * Displays the application header/banner with gradient styling.
  */
 export const showHeader = (): void => {
   if (isQuietMode()) return;
 
+  const width = 54;
   const margin = "  ";
-  const innerWidth = 53;
 
-  const stripAnsi = (value: string): string => value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
-  const visibleWidth = (value: string): number => Array.from(stripAnsi(value)).length;
-  const padCenter = (value: string, numberOfSpecialChars: number): string => {
-    const width = visibleWidth(value);
-    if (width >= innerWidth) return value;
-    const left = Math.floor((innerWidth - width) / 2);
-    const right = innerWidth - width - left - numberOfSpecialChars;
-    return " ".repeat(left) + value + " ".repeat(right);
-  };
-  const printLine = (content = "", numberOfSpecialChars = 0): void => {
-    console.log(chalk.cyan(`${margin}│`) + padCenter(content, numberOfSpecialChars) + chalk.cyan("│"));
-  };
+  // Gradient line using transitioning block characters
+  const gradientTop = margin + chalk.blueBright("▄".repeat(4)) + chalk.cyan("▄".repeat(width - 8)) + chalk.blueBright("▄".repeat(4));
+  const gradientBottom = margin + chalk.blueBright("▀".repeat(4)) + chalk.cyan("▀".repeat(width - 8)) + chalk.blueBright("▀".repeat(4));
+
+  // ASCII art style title
+  const asciiArt = [
+    "     █████╗ ███████╗██████╗        ██████╗██╗     ██╗",
+    "    ██╔══██╗╚══███╔╝██╔══██╗      ██╔════╝██║     ██║",
+    "    ███████║  ███╔╝ ██████╔╝█████╗██║     ██║     ██║",
+    "    ██╔══██║ ███╔╝  ██╔═══╝ ╚════╝██║     ██║     ██║",
+    "    ██║  ██║███████╗██║           ╚██████╗███████╗██║",
+    "    ╚═╝  ╚═╝╚══════╝╚═╝            ╚═════╝╚══════╝╚═╝",
+  ];
+
+  const tagline = `v${version} • Activate & manage your Azure roles`;
+  const centeredTagline = margin + tagline.padStart(Math.floor((width + tagline.length) / 2)).padEnd(width);
 
   logBlank();
+  console.log(gradientTop);
+  logBlank();
 
-  const top = `${margin}╭${"─".repeat(innerWidth)}╮`;
-  const bottom = `${margin}╰${"─".repeat(innerWidth)}╯`;
-  const title = chalk.blueBright("⚡ ") + chalk.bold.white("AZP-CLI") + chalk.dim(" • Azure PIM Manager") + chalk.blueBright(" ⚡");
-  const tagline = chalk.dim("Activate & manage your Azure roles");
+  for (const line of asciiArt) {
+    console.log(chalk.bold.cyanBright(margin + line));
+  }
 
-  console.log(chalk.cyan(top));
-  printLine();
-  printLine(title, 4);
-  printLine();
-  printLine(tagline);
-  printLine();
-  console.log(chalk.cyan(bottom));
+  logBlank();
+  console.log(chalk.dim(centeredTagline));
+  logBlank();
+  console.log(gradientBottom);
   logBlank();
 };
 
 /**
- * Displays a section divider.
+ * Displays a section divider
  */
 export const showDivider = (): void => {
   if (isQuietMode()) return;
-  console.log(chalk.dim("─".repeat(54)));
+  const width = 54;
+  const divider = chalk.blueBright("─".repeat(4)) + chalk.cyan("─".repeat(width - 8)) + chalk.blueBright("─".repeat(4));
+  console.log("  " + divider);
 };
 
 /**
@@ -260,7 +265,7 @@ export const formatActiveRole = (roleName: string, scopeDisplayName: string, sub
  * Formats a subscription display string.
  */
 export const formatSubscription = (displayName: string, subscriptionId: string): string => {
-  return `${chalk.white.bold(displayName)} ${chalk.dim(`(${subscriptionId})`)}`;
+  return `${chalk.cyanBright.bold(displayName)} ${chalk.dim(`(${subscriptionId})`)}`;
 };
 
 /**
@@ -279,7 +284,7 @@ export const formatStatus = (status: string): string => {
     case "pending":
       return chalk.yellow.bold(`⏳ ${status}`);
     default:
-      return chalk.blue.bold(`ℹ ${status}`);
+      return chalk.cyanBright.bold(`ℹ ${status}`);
   }
 };
 
@@ -289,13 +294,61 @@ export const formatStatus = (status: string): string => {
 export const showSummary = (title: string, items: { label: string; value: string }[]): void => {
   if (isQuietMode()) return;
   const boxWidth = 54;
+  const margin = "  ";
   const titleWidth = Math.max(0, boxWidth - 4 - title.length);
+
+  // Gradient-style top border
+  const topLeft = chalk.blueBright("┌─");
+  const topTitle = chalk.cyanBright.bold(` ${title} `);
+  const topRight = chalk.cyan("─".repeat(titleWidth - 2)) + chalk.blueBright("─".repeat(2));
+
   logBlank();
-  console.log(chalk.cyan.bold(`┌─ ${title} ${"─".repeat(titleWidth)}`));
+  console.log(margin + topLeft + topTitle + topRight);
   items.forEach((item) => {
-    console.log(chalk.cyan("│ ") + chalk.dim(`${item.label}: `) + chalk.white(item.value));
+    console.log(margin + chalk.blueBright("│") + chalk.cyan(" ") + chalk.dim(`${item.label}: `) + chalk.white(item.value));
   });
-  console.log(chalk.cyan.bold("└" + "─".repeat(boxWidth)));
+  // Gradient-style bottom border
+  const bottomBorder = chalk.blueBright("└" + "─".repeat(2)) + chalk.cyan("─".repeat(boxWidth - 4)) + chalk.blueBright("─".repeat(2));
+  console.log(margin + bottomBorder);
+  logBlank();
+};
+
+/**
+ * Displays user information in a stylish card format.
+ */
+export const showUserInfo = (displayName: string, email: string): void => {
+  if (isQuietMode()) return;
+
+  const width = 54;
+  const margin = "  ";
+  const innerWidth = width - 2; // Account for left and right borders
+
+  // Gradient borders
+  const topBorder = chalk.blueBright("╭" + "─".repeat(2)) + chalk.cyan("─".repeat(width - 6)) + chalk.blueBright("─".repeat(2) + "╮");
+  const bottomBorder = chalk.blueBright("╰" + "─".repeat(2)) + chalk.cyan("─".repeat(width - 6)) + chalk.blueBright("─".repeat(2) + "╯");
+
+  // Fixed-width content lines (no emoji - they have inconsistent widths)
+  const titleText = "Authenticated User";
+  const titlePadding = innerWidth - titleText.length - 3; // 3 for " ● "
+  const titleLine = ` ${chalk.cyanBright("●")} ${chalk.cyanBright.bold(titleText)}${" ".repeat(titlePadding)}`;
+
+  const nameLabel = "Name:  ";
+  const namePadding = innerWidth - 5 - nameLabel.length - displayName.length; // 5 for "   • "
+  const nameLine = `   ${chalk.blueBright("•")} ${chalk.dim(nameLabel)}${chalk.white.bold(displayName)}${" ".repeat(Math.max(0, namePadding))}`;
+
+  const emailLabel = "Email: ";
+  const emailPadding = innerWidth - 5 - emailLabel.length - email.length; // 5 for "   • "
+  const emailLine = `   ${chalk.blueBright("•")} ${chalk.dim(emailLabel)}${chalk.cyan(email)}${" ".repeat(Math.max(0, emailPadding))}`;
+
+  const separatorLine = chalk.dim("─".repeat(innerWidth));
+
+  logBlank();
+  console.log(margin + topBorder);
+  console.log(margin + chalk.blueBright("│") + titleLine + chalk.blueBright("│"));
+  console.log(margin + chalk.blueBright("│") + separatorLine + chalk.blueBright("│"));
+  console.log(margin + chalk.blueBright("│") + nameLine + chalk.blueBright("│"));
+  console.log(margin + chalk.blueBright("│") + emailLine + chalk.blueBright("│"));
+  console.log(margin + bottomBorder);
   logBlank();
 };
 
