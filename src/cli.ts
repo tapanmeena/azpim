@@ -31,7 +31,7 @@ export type ActivateOnceOptions = {
   durationHours?: number;
   justification?: string;
   dryRun?: boolean;
-  noInteractive?: boolean;
+  nonInteractive?: boolean;
   yes?: boolean;
   allowMultiple?: boolean;
 };
@@ -65,7 +65,7 @@ export type DeactivateOnceOptions = {
   roleNames: string[];
   justification?: string;
   dryRun?: boolean;
-  noInteractive?: boolean;
+  nonInteractive?: boolean;
   yes?: boolean;
   allowMultiple?: boolean;
 };
@@ -115,8 +115,8 @@ export const activateOnce = async (authContext: AuthContext, options: ActivateOn
     throw new Error("Missing required flag: --role-name (can be repeated)");
   }
 
-  if (options.noInteractive && !options.yes && !options.dryRun) {
-    throw new Error("--no-interactive requires --yes (or use --dry-run)");
+  if (options.nonInteractive && !options.yes && !options.dryRun) {
+    throw new Error("--non-interactive requires --yes (or use --dry-run)");
   }
 
   logBlank();
@@ -154,9 +154,9 @@ export const activateOnce = async (authContext: AuthContext, options: ActivateOn
     }
 
     if (matches.length > 1 && !options.allowMultiple) {
-      if (options.noInteractive) {
+      if (options.nonInteractive) {
         throw new Error(
-          `Ambiguous --role-name="${name}" matched ${matches.length} eligible roles. Use --allow-multiple to activate all matches, or run without --no-interactive to select interactively.`
+          `Ambiguous --role-name="${name}" matched ${matches.length} eligible roles. Use --allow-multiple to activate all matches, or run without --non-interactive to select interactively.`
         );
       }
 
@@ -336,8 +336,8 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
     throw new Error("Missing required flag: --role-name (can be repeated)");
   }
 
-  if (options.noInteractive && !options.yes && !options.dryRun) {
-    throw new Error("--no-interactive requires --yes (or use --dry-run)");
+  if (options.nonInteractive && !options.yes && !options.dryRun) {
+    throw new Error("--non-interactive requires --yes (or use --dry-run)");
   }
 
   logBlank();
@@ -393,9 +393,9 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
     }
 
     if (matches.length > 1 && !options.allowMultiple) {
-      if (options.noInteractive) {
+      if (options.nonInteractive) {
         throw new Error(
-          `Ambiguous --role-name="${name}" matched ${matches.length} active roles. Use --allow-multiple to deactivate all matches, or run without --no-interactive to select interactively.`
+          `Ambiguous --role-name="${name}" matched ${matches.length} active roles. Use --allow-multiple to deactivate all matches, or run without --non-interactive to select interactively.`
         );
       }
 

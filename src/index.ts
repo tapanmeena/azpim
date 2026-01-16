@@ -30,7 +30,7 @@ type ActivateCommandOptions = {
   durationHours?: number;
   justification?: string;
   preset?: string;
-  noInteractive?: boolean;
+  nonInteractive?: boolean;
   yes?: boolean;
   allowMultiple?: boolean;
   dryRun?: boolean;
@@ -43,7 +43,7 @@ type DeactivateCommandOptions = {
   roleName?: string[];
   justification?: string;
   preset?: string;
-  noInteractive?: boolean;
+  nonInteractive?: boolean;
   yes?: boolean;
   allowMultiple?: boolean;
   dryRun?: boolean;
@@ -107,7 +107,7 @@ program
   .option("--subscription-id <id>", "Azure subscription ID (required for non-interactive one-shot activation)")
   .option(
     "--role-name <name>",
-    "Role name to activate (can be repeated). In --no-interactive mode, ambiguous matches error unless --allow-multiple is set.",
+    "Role name to activate (can be repeated). In --non-interactive mode, ambiguous matches error unless --allow-multiple is set.",
     (value: string, previous: string[] | undefined) => {
       const list = previous ?? [];
       list.push(value);
@@ -118,7 +118,7 @@ program
   .option("--duration-hours <n>", "Duration hours (1-8)", (value: string) => Number.parseInt(value, 10))
   .option("--justification <text>", "Justification for activation")
   .option("--preset <name>", "Use a saved preset (fills defaults; flags still override)")
-  .option("--no-interactive", "Do not prompt; require flags to be unambiguous")
+  .option("--non-interactive", "Do not prompt; require flags to be unambiguous")
   .option("-y, --yes", "Skip confirmation prompt")
   .option("--allow-multiple", "Allow activating multiple eligible matches for a role name")
   .option("--dry-run", "Resolve targets and print summary without submitting activation requests")
@@ -138,7 +138,7 @@ program
       const explicitPresetName = getOptionValueSource(command, "preset") === "cli" ? cmd.preset : undefined;
 
       const requestedRoleNames = cmd.roleName ?? [];
-      const wantsOneShot = Boolean(cmd.noInteractive || cmd.subscriptionId || requestedRoleNames.length > 0 || cmd.dryRun || explicitPresetName);
+      const wantsOneShot = Boolean(cmd.nonInteractive || cmd.subscriptionId || requestedRoleNames.length > 0 || cmd.dryRun || explicitPresetName);
 
       // Authenticate (required for both interactive and one-shot flows)
       const authContext = await authenticate();
@@ -190,7 +190,7 @@ program
         durationHours: effectiveDurationHours,
         justification: effectiveJustification,
         dryRun: cmd.dryRun,
-        noInteractive: cmd.noInteractive,
+        nonInteractive: cmd.nonInteractive,
         yes: cmd.yes,
         allowMultiple: effectiveAllowMultiple,
       });
@@ -233,7 +233,7 @@ program
   .option("--subscription-id <id>", "Azure subscription ID (optional; if omitted, searches all subscriptions)")
   .option(
     "--role-name <name>",
-    "Role name to deactivate (can be repeated). In --no-interactive mode, ambiguous matches error unless --allow-multiple is set.",
+    "Role name to deactivate (can be repeated). In --non-interactive mode, ambiguous matches error unless --allow-multiple is set.",
     (value: string, previous: string[] | undefined) => {
       const list = previous ?? [];
       list.push(value);
@@ -243,7 +243,7 @@ program
   )
   .option("--justification <text>", "Justification for deactivation")
   .option("--preset <name>", "Use a saved preset (fills defaults; flags still override)")
-  .option("--no-interactive", "Do not prompt; require flags to be unambiguous")
+  .option("--non-interactive", "Do not prompt; require flags to be unambiguous")
   .option("-y, --yes", "Skip confirmation prompt")
   .option("--allow-multiple", "Allow deactivating multiple active matches for a role name")
   .option("--dry-run", "Resolve targets and print summary without submitting deactivation requests")
@@ -263,7 +263,7 @@ program
       const explicitPresetName = getOptionValueSource(command, "preset") === "cli" ? cmd.preset : undefined;
 
       const requestedRoleNames = cmd.roleName ?? [];
-      const wantsOneShot = Boolean(cmd.noInteractive || cmd.subscriptionId || requestedRoleNames.length > 0 || cmd.dryRun || explicitPresetName);
+      const wantsOneShot = Boolean(cmd.nonInteractive || cmd.subscriptionId || requestedRoleNames.length > 0 || cmd.dryRun || explicitPresetName);
 
       // Authenticate (required for both interactive and one-shot flows)
       const authContext = await authenticate();
@@ -311,7 +311,7 @@ program
         roleNames: effectiveRoleNames,
         justification: effectiveJustification,
         dryRun: cmd.dryRun,
-        noInteractive: cmd.noInteractive,
+        nonInteractive: cmd.nonInteractive,
         yes: cmd.yes,
         allowMultiple: effectiveAllowMultiple,
       });

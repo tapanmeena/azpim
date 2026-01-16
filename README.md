@@ -142,7 +142,7 @@ Use flags to activate or deactivate PIM roles directly without going through the
 
 ```bash
 # Activate a single role by name (non-interactive)
-azp activate --no-interactive --yes \
+azp activate --non-interactive --yes \
    --subscription-id <SUBSCRIPTION_GUID> \
    --role-name "Owner" \
    --duration-hours 2 \
@@ -150,20 +150,20 @@ azp activate --no-interactive --yes \
    --output json
 
 # Activate multiple roles (repeat --role-name)
-azp activate --no-interactive --yes \
+azp activate --non-interactive --yes \
    --subscription-id <SUBSCRIPTION_GUID> \
    --role-name "Contributor" \
    --role-name "User Access Administrator"
 
 # If a role name matches multiple eligible roles (different scopes),
-# --no-interactive will error unless you explicitly allow activating all matches
-azp activate --no-interactive --yes \
+# --non-interactive will error unless you explicitly allow activating all matches
+azp activate --non-interactive --yes \
    --subscription-id <SUBSCRIPTION_GUID> \
    --role-name "Contributor" \
    --allow-multiple
 
 # Preview what would happen without submitting requests
-azp activate --no-interactive --dry-run \
+azp activate --non-interactive --dry-run \
    --subscription-id <SUBSCRIPTION_GUID> \
    --role-name "Contributor" \
    --output json
@@ -173,13 +173,13 @@ azp activate --no-interactive --dry-run \
 
 ```bash
 # Deactivate specific roles
-azp deactivate --no-interactive --yes \
+azp deactivate --non-interactive --yes \
    --subscription-id <SUBSCRIPTION_GUID> \
    --role-name "Owner" \
    --justification "Task completed"
 
 # Deactivate across all subscriptions (omit subscription-id)
-azp deactivate --no-interactive --yes \
+azp deactivate --non-interactive --yes \
    --role-name "Contributor" \
    --allow-multiple
 ```
@@ -188,7 +188,7 @@ azp deactivate --no-interactive --yes \
 
 **Common flags (activate/deactivate):**
 
-- `--no-interactive` - Disable interactive prompts
+- `--non-interactive` - Disable interactive prompts
 - `-y, --yes` - Skip confirmation prompts
 - `--subscription-id <id>` - Target subscription (optional for deactivate)
 - `--role-name <name>` - Role name(s) to target (can be repeated)
@@ -259,10 +259,10 @@ azp preset remove daily-ops
 azp activate --preset daily-ops --yes
 
 # Non-interactive run using the preset
-azp activate --preset daily-ops --no-interactive --yes --output json
+azp activate --preset daily-ops --non-interactive --yes --output json
 
 # Deactivate using a preset
-azp deactivate --preset daily-ops --no-interactive --yes
+azp deactivate --preset daily-ops --non-interactive --yes
 ```
 
 ### Defaults
@@ -270,7 +270,7 @@ azp deactivate --preset daily-ops --no-interactive --yes
 When you create a preset via `azp preset add`, you can optionally set it as the default for `activate` and/or `deactivate`.
 
 - Default presets are applied automatically when you run one-shot flows and you haven’t explicitly provided the required flags.
-- Example: after setting a default activate preset, `azp activate --no-interactive --yes` can work without specifying `--subscription-id`/`--role-name`.
+- Example: after setting a default activate preset, `azp activate --non-interactive --yes` can work without specifying `--subscription-id`/`--role-name`.
 
 ### Example Session
 

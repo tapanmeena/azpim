@@ -22,5 +22,5 @@
     "**/dist": true,
     "**/pnpm-lock.yaml": true
   },
-  "cSpell.words": ["AADSTS"]
+  "cSpell.words": ["AADSTS", "azpim"]
 }
