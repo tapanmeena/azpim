@@ -4,7 +4,8 @@
   "description": "Terminal app to manage Azure PIM role activations",
   "main": "dist/index.js",
   "bin": {
-    "azp": "./dist/index.js"
+    "azp": "./dist/index.js",
+    "azpim": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -39,14 +40,14 @@
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "chalk": "^5.6.2",
     "commander": "^14.0.2",
-    "inquirer": "^13.1.0",
+    "inquirer": "^13.2.0",
     "isomorphic-fetch": "^3.0.0",
     "ora": "^9.0.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.9",
-    "@types/node": "^25.0.6",
+    "@types/node": "^25.0.9",
     "esbuild": "^0.27.2",
     "standard-version": "^9.5.0",
     "ts-node": "^10.9.2",
