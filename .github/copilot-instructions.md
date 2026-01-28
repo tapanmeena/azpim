@@ -1,4 +1,4 @@
-# Copilot instructions for azp-cli
+# Copilot instructions for azpim
 
 ## Big picture
 
@@ -45,7 +45,7 @@
 - Errors:
   - `src/index.ts` has top-level error handling and special-cases auth/Azure CLI errors (e.g., messages containing `AADSTS` or `AzureCliCredential`).
   - In `azure-pim.ts`, 403/`AuthorizationFailed` returns an empty list (warn) instead of failing the whole flow.
-  - For presets, prefer clear “file path + next step” messages (e.g., mention `AZP_PRESETS_PATH` override or `azp preset list`).
+  - For presets, prefer clear “file path + next step” messages (e.g., mention `AZP_PRESETS_PATH` override or `azpim preset list`).
 
 ## Integration points / prerequisites
 
