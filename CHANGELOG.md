@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/tapanmeena/azpim/compare/v1.4.0...v1.2.0) (2026-01-31)
+
+
+### Features
+
+* add subscription reader support for role activation and deactiv… ([#4](https://github.com/tapanmeena/azpim/issues/4)) ([9e3b231](https://github.com/tapanmeena/azpim/commit/9e3b231f4e6d7be868177d0d98301f81dbddf220))
+
+
+### Bug Fixes
+
+* revert version number to 1.0.0 in package.json ([e1a2692](https://github.com/tapanmeena/azpim/commit/e1a26925e2fc14e7de04c5934d2c5fb307410d83))
+
 ## [1.4.0](https://github.com/tapanmeena/azp-cli/compare/v1.3.1...v1.4.0) (2026-01-15)
 
 
