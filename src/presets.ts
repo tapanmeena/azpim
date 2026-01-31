@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+
+import { ENV_PRESETS_PATH, getUserDataPath } from "./paths";
 
 export type PresetCommandName = "activate" | "deactivate";
 
@@ -48,26 +49,17 @@ export type TemplateContext = {
   now?: Date;
 };
 
-const AZPIM_PRESETS_PATH_ENV = "AZPIM_PRESETS_PATH";
-
-export const getDefaultPresetsFilePath = (): string => {
-  const envOverride = process.env[AZPIM_PRESETS_PATH_ENV];
+/**
+ * Returns the presets file path for a specific user.
+ * If AZPIM_PRESETS_PATH env is set, uses that as absolute override.
+ * Otherwise returns user-specific path: %APPDATA%/azpim/users/<userId>/presets.json
+ */
+export const getPresetsFilePath = (userId: string): string => {
+  const envOverride = process.env[ENV_PRESETS_PATH];
   if (envOverride && envOverride.trim()) {
     return envOverride.trim();
   }
-
-  const appName = "azpim";
-  const platform = process.platform;
-
-  if (platform === "win32") {
-    const appData = process.env.APPDATA;
-    const base = appData && appData.trim() ? appData.trim() : path.join(os.homedir(), "AppData", "Roaming");
-    return path.join(base, appName, "presets.json");
-  }
-
-  const xdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const base = xdgConfigHome && xdgConfigHome.trim() ? xdgConfigHome.trim() : path.join(os.homedir(), ".config");
-  return path.join(base, appName, "presets.json");
+  return getUserDataPath(userId, "presets.json");
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> => {
@@ -94,7 +86,13 @@ const validateActivateOptions = (value: unknown): ActivatePresetOptions | undefi
   const justification = typeof value.justification === "string" ? value.justification : undefined;
   const allowMultiple = typeof value.allowMultiple === "boolean" ? value.allowMultiple : undefined;
 
-  return { subscriptionId, roleNames, durationHours, justification, allowMultiple };
+  return {
+    subscriptionId,
+    roleNames,
+    durationHours,
+    justification,
+    allowMultiple,
+  };
 };
 
 const validateDeactivateOptions = (value: unknown): DeactivatePresetOptions | undefined => {
@@ -159,7 +157,12 @@ export const normalizePresetsFile = (value: unknown): PresetsFile => {
   };
 };
 
-export const loadPresets = async (filePath: string = getDefaultPresetsFilePath()): Promise<LoadedPresets> => {
+/**
+ * Loads presets for a specific user.
+ * @param userId - Azure AD user ID (required)
+ */
+export const loadPresets = async (userId: string): Promise<LoadedPresets> => {
+  const filePath = getPresetsFilePath(userId);
   try {
     const raw = await readFile(filePath, "utf8");
     const json = JSON.parse(raw) as unknown;

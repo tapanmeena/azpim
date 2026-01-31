@@ -48,7 +48,9 @@ const validatePresetName = (value: string, existingNames: Set<string>): true | s
 };
 
 const promptForCommandScope = async (): Promise<PresetAddWizardResult["setDefaultFor"]> => {
-  const { appliesTo } = await inquirer.prompt<{ appliesTo: "activate" | "deactivate" | "both" }>([
+  const { appliesTo } = await inquirer.prompt<{
+    appliesTo: "activate" | "deactivate" | "both";
+  }>([
     {
       type: "select",
       name: "appliesTo",
@@ -68,7 +70,9 @@ const promptForEditScope = async (existingEntry: PresetEntry): Promise<PresetAdd
   const defaultValue: "activate" | "deactivate" | "both" =
     existingEntry.activate && existingEntry.deactivate ? "both" : existingEntry.activate ? "activate" : "deactivate";
 
-  const { appliesTo } = await inquirer.prompt<{ appliesTo: "activate" | "deactivate" | "both" }>([
+  const { appliesTo } = await inquirer.prompt<{
+    appliesTo: "activate" | "deactivate" | "both";
+  }>([
     {
       type: "select",
       name: "appliesTo",
@@ -91,7 +95,10 @@ const uniqueRoleChoices = (eligibleRoles: Array<{ roleName: string; scopeDisplay
     if (existing) {
       existing.scopes.add(role.scopeDisplayName);
     } else {
-      map.set(role.roleName, { roleName: role.roleName, scopes: new Set([role.scopeDisplayName]) });
+      map.set(role.roleName, {
+        roleName: role.roleName,
+        scopes: new Set([role.scopeDisplayName]),
+      });
     }
   }
 
@@ -100,16 +107,23 @@ const uniqueRoleChoices = (eligibleRoles: Array<{ roleName: string; scopeDisplay
     .map((r) => {
       const count = r.scopes.size;
       const suffix = count > 1 ? chalk.dim(` (${count} scopes)`) : "";
-      return { name: `${chalk.white.bold(r.roleName)}${suffix}`, value: r.roleName };
+      return {
+        name: `${chalk.white.bold(r.roleName)}${suffix}`,
+        value: r.roleName,
+      };
     });
 };
 
-const promptForAzureSelection = async (): Promise<{ authContext: AuthContext; subscriptionId: string; roleNames: string[] }> => {
+const promptForAzureSelection = async (): Promise<{
+  authContext: AuthContext;
+  subscriptionId: string;
+  roleNames: string[];
+}> => {
   logBlank();
   logInfo("Preset add: authenticating to query subscriptions/roles...");
   const authContext = await authenticate();
 
-  const subscriptions = await fetchSubscriptions(authContext.credential);
+  const subscriptions = await fetchSubscriptions(authContext.credential, authContext.userId);
   if (subscriptions.length === 0) {
     throw new Error("No subscriptions found.");
   }
@@ -121,7 +135,10 @@ const promptForAzureSelection = async (): Promise<{ authContext: AuthContext; su
       message: chalk.cyan("Select a subscription:"),
       choices: subscriptions
         .sort((a, b) => a.displayName.localeCompare(b.displayName))
-        .map((s) => ({ name: formatSubscription(s.displayName, s.subscriptionId), value: s.subscriptionId })),
+        .map((s) => ({
+          name: formatSubscription(s.displayName, s.subscriptionId),
+          value: s.subscriptionId,
+        })),
       pageSize: 15,
     },
   ]);
@@ -151,7 +168,12 @@ const promptForAzureSelection = async (): Promise<{ authContext: AuthContext; su
       message: chalk.cyan("Select role name(s) to include in this preset:"),
       choices: roleChoices.length
         ? roleChoices
-        : [{ name: chalk.dim("(No eligible roles found; you can add role names manually later)"), value: "" }],
+        : [
+            {
+              name: chalk.dim("(No eligible roles found; you can add role names manually later)"),
+              value: "",
+            },
+          ],
       validate: (answer) => {
         if (!Array.isArray(answer) || answer.filter(Boolean).length < 1) {
           return chalk.red("Choose at least one role name.");
@@ -214,7 +236,10 @@ const promptForManualSelection = async (defaults?: {
     .map((v) => v.trim())
     .filter(Boolean);
 
-  return { subscriptionId: subscriptionId.trim() ? subscriptionId.trim() : undefined, roleNames };
+  return {
+    subscriptionId: subscriptionId.trim() ? subscriptionId.trim() : undefined,
+    roleNames,
+  };
 };
 
 const promptForCommonFields = async (
@@ -496,14 +521,16 @@ export const runPresetEditWizard = async (args: EditWizardArgs): Promise<PresetE
   return { name: args.name, entry, setDefaultFor };
 };
 
-export const runPresetsManager = async (): Promise<void> => {
+export const runPresetsManager = async (authContext: AuthContext): Promise<void> => {
   while (true) {
     showDivider();
     logBlank();
 
-    const presets = await loadPresets();
+    const presets = await loadPresets(authContext.userId);
 
-    const { action } = await inquirer.prompt<{ action: "list" | "add" | "edit" | "remove" | "defaults" | "back" | "exit" }>([
+    const { action } = await inquirer.prompt<{
+      action: "list" | "add" | "edit" | "remove" | "defaults" | "back" | "exit";
+    }>([
       {
         type: "select",
         name: "action",
@@ -547,7 +574,10 @@ export const runPresetsManager = async (): Promise<void> => {
 
         case "add": {
           const names = listPresetNames(presets.data);
-          const result = await runPresetAddWizard({ existingNames: names, fromAzure: undefined });
+          const result = await runPresetAddWizard({
+            existingNames: names,
+            fromAzure: undefined,
+          });
           let nextData = upsertPreset(presets.data, result.name, result.entry);
           if (result.setDefaultFor) {
             if (result.setDefaultFor === "both") {
@@ -578,7 +608,10 @@ export const runPresetsManager = async (): Promise<void> => {
             },
           ]);
           const existing = getPreset(presets.data, name)!;
-          const result = await runPresetEditWizard({ name, existingEntry: existing });
+          const result = await runPresetEditWizard({
+            name,
+            existingEntry: existing,
+          });
           let nextData = upsertPreset(presets.data, result.name, result.entry);
           if (result.setDefaultFor) {
             if (result.setDefaultFor === "both") {

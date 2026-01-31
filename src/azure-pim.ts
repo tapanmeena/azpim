@@ -2,6 +2,7 @@ import { AuthorizationManagementClient } from "@azure/arm-authorization";
 import { SubscriptionClient } from "@azure/arm-resources-subscriptions";
 import { AzureCliCredential } from "@azure/identity";
 import { v4 as uuidv4 } from "uuid";
+import { loadCachedSubscriptions, saveCachedSubscriptions } from "./subscription-cache";
 import { failSpinner, formatStatus, logBlank, logDim, logError, logSuccess, logWarning, startSpinner, succeedSpinner, warnSpinner } from "./ui";
 
 export interface AzureSubscription {
@@ -45,7 +46,27 @@ export interface AzureActivationRequest {
   durationHours: number;
 }
 
-export const fetchSubscriptions = async (credential: AzureCliCredential): Promise<AzureSubscription[]> => {
+export type FetchSubscriptionsOptions = {
+  forceRefresh?: boolean;
+};
+
+export const fetchSubscriptions = async (
+  credential: AzureCliCredential,
+  userId: string,
+  options: FetchSubscriptionsOptions = {},
+): Promise<AzureSubscription[]> => {
+  const { forceRefresh = false } = options;
+
+  // Try to use cached subscriptions if not forcing refresh
+  if (!forceRefresh) {
+    const cache = await loadCachedSubscriptions(userId);
+    if (cache.isFresh && cache.data && cache.data.subscriptions.length > 0) {
+      startSpinner("Using cached subscriptions...");
+      succeedSpinner(`Found ${cache.data.subscriptions.length} subscription(s) (cached)`);
+      return cache.data.subscriptions;
+    }
+  }
+
   startSpinner("Fetching Azure subscriptions...");
 
   const subscriptionClient = new SubscriptionClient(credential);
@@ -59,6 +80,9 @@ export const fetchSubscriptions = async (credential: AzureCliCredential): Promis
     });
   }
 
+  // Save to cache
+  await saveCachedSubscriptions(userId, subscriptions);
+
   succeedSpinner(`Found ${subscriptions.length} subscription(s)`);
   return subscriptions;
 };
@@ -67,7 +91,7 @@ export const fetchEligibleRolesForSubscription = async (
   credential: AzureCliCredential,
   subscriptionId: string,
   subscriptionName: string,
-  principalId: string
+  principalId: string,
 ): Promise<EligibleAzureRole[]> => {
   startSpinner(`Fetching eligible roles for "${subscriptionName}"...`);
 
@@ -111,7 +135,7 @@ export const listActiveAzureRoles = async (
   credential: AzureCliCredential,
   subscriptionId: string,
   subscriptionName: string,
-  principalId: string
+  principalId: string,
 ): Promise<ActiveAzureRole[]> => {
   startSpinner(`Fetching active roles for "${subscriptionName}"...`);
 
@@ -157,7 +181,7 @@ export const listActiveAzureRoles = async (
 export const activateAzureRole = async (
   credential: AzureCliCredential,
   request: AzureActivationRequest,
-  subscriptionId: string
+  subscriptionId: string,
 ): Promise<{ status?: string }> => {
   const client = new AuthorizationManagementClient(credential, subscriptionId);
   const requestName = uuidv4();
@@ -217,7 +241,7 @@ export const deactivateAzureRole = async (
   subscriptionId: string,
   principalId: string,
   roleDefinitionId: string,
-  roleName?: string
+  roleName?: string,
 ): Promise<void> => {
   const client = new AuthorizationManagementClient(credential, subscriptionId);
   const requestName = uuidv4();

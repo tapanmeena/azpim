@@ -3,7 +3,7 @@ import "isomorphic-fetch";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { getDefaultPresetsFilePath } from "./presets";
+import { getBaseConfigDir } from "./paths";
 
 export type UpdateCheckMode = "auto" | "force";
 
@@ -27,8 +27,7 @@ const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 1500;
 
 const getUpdateStateFilePath = (): string => {
-  const presetsPath = getDefaultPresetsFilePath();
-  const configDir = path.dirname(presetsPath);
+  const configDir = getBaseConfigDir();
   return path.join(configDir, "update-check.json");
 };
 
