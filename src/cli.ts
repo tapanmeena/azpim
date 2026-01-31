@@ -10,7 +10,20 @@ import {
   listActiveAzureRoles,
 } from "./azure-pim";
 import {
+  adminDeactivateAssignment,
+  AllActiveAssignment,
+  ApprovalDecisionResult,
+  fetchAllActiveAssignments,
+  fetchPendingApprovals,
+  getApprovalDetails,
+  PendingApproval,
+  submitApprovalDecision,
+} from "./azure-pim-approvals";
+import {
   formatActiveRole,
+  formatAssignment,
+  formatPendingApproval,
+  formatPendingApprovalDetailed,
   formatRole,
   formatSubscription,
   logBlank,
@@ -167,7 +180,10 @@ export const activateOnce = async (authContext: AuthContext, options: ActivateOn
           type: "checkbox",
           name: "selectedIds",
           message: chalk.cyan(`Select matches for "${name}":`),
-          choices: matches.map((r) => ({ name: formatRole(r.roleName, r.scopeDisplayName), value: r.id })),
+          choices: matches.map((r) => ({
+            name: formatRole(r.roleName, r.scopeDisplayName),
+            value: r.id,
+          })),
           validate: (answer) => {
             if (!Array.isArray(answer) || answer.length < 1) {
               return chalk.red("You must choose at least one role.");
@@ -215,7 +231,10 @@ export const activateOnce = async (authContext: AuthContext, options: ActivateOn
 
   showSummary("Activation Summary", [
     { label: "Subscription", value: selectedSubscription.displayName },
-    { label: "Role(s)", value: targets.map((t) => `${t.roleName} @ ${t.scopeDisplayName}`).join(", ") },
+    {
+      label: "Role(s)",
+      value: targets.map((t) => `${t.roleName} @ ${t.scopeDisplayName}`).join(", "),
+    },
     { label: "Duration", value: `${durationHours} hour(s)` },
     { label: "Justification", value: justification },
     { label: "Dry-run", value: options.dryRun ? "Yes" : "No" },
@@ -347,7 +366,10 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
   // if (subscriptions.length === 0) {
   //   throw new Error("No subscriptions found.");
   // }
-  let targetSubscriptions: Array<{ subscriptionId: string; displayName: string }>;
+  let targetSubscriptions: Array<{
+    subscriptionId: string;
+    displayName: string;
+  }>;
   if (options.subscriptionId?.trim()) {
     // Allow users without Reader permissions to deactivate roles via PIM
     // as long as they have active roles in the subscription.
@@ -458,7 +480,10 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
   }
 
   showSummary("Deactivation Summary", [
-    { label: "Role(s)", value: targets.map((t) => `${t.roleName} @ ${t.scopeDisplayName} (${t.subscriptionName})`).join(", ") },
+    {
+      label: "Role(s)",
+      value: targets.map((t) => `${t.roleName} @ ${t.scopeDisplayName} (${t.subscriptionName})`).join(", "),
+    },
     { label: "Justification", value: justification },
     { label: "Dry-run", value: options.dryRun ? "Yes" : "No" },
   ]);
@@ -598,7 +623,9 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
   while (true) {
     showDivider();
     logBlank();
-    const { action } = await inquirer.prompt<{ action: "activate" | "deactivate" | "presets" | "exit" }>([
+    const { action } = await inquirer.prompt<{
+      action: "activate" | "deactivate" | "approvals" | "assignments" | "presets" | "exit";
+    }>([
       {
         type: "select",
         name: "action",
@@ -606,6 +633,8 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
         choices: [
           { name: chalk.green("▶ Activate Role(s)"), value: "activate" },
           { name: chalk.yellow("◼ Deactivate Role(s)"), value: "deactivate" },
+          { name: chalk.blue("📋 Approvals..."), value: "approvals" },
+          { name: chalk.cyan("👥 All Assignments..."), value: "assignments" },
           { name: chalk.magenta("⚙ Presets..."), value: "presets" },
           { name: chalk.red("✕ Exit"), value: "exit" },
         ],
@@ -619,6 +648,12 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
         break;
       case "deactivate":
         await handleDeactivation(authContext);
+        break;
+      case "approvals":
+        await showApprovalsMenu(authContext);
+        break;
+      case "assignments":
+        await showAssignmentsMenu(authContext);
         break;
       case "presets":
         await runPresetsManager();
@@ -644,13 +679,18 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
 
     if (subscriptions.length === 0) {
       logWarning("No subscriptions found.");
-      const { action } = await inquirer.prompt<{ action: "enter" | "back" | "exit" }>([
+      const { action } = await inquirer.prompt<{
+        action: "enter" | "back" | "exit";
+      }>([
         {
           type: "select",
           name: "action",
           message: chalk.yellow("No subscriptions found. What would you like to do?"),
           choices: [
-            { name: chalk.cyan("Enter subscription ID manually"), value: "enter" },
+            {
+              name: chalk.cyan("Enter subscription ID manually"),
+              value: "enter",
+            },
             { name: chalk.cyan("↩ Back to Main Menu"), value: "back" },
             { name: chalk.red("✕ Exit"), value: "exit" },
           ],
@@ -676,7 +716,10 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
             },
           },
         ]);
-        selectedSubscription = { subscriptionId: manualId.trim(), displayName: manualId.trim() };
+        selectedSubscription = {
+          subscriptionId: manualId.trim(),
+          displayName: manualId.trim(),
+        };
       }
     } else {
       const BACK_VALUE = "__BACK__";
@@ -711,7 +754,10 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
         logError("Selected subscription not found.");
         return;
       }
-      selectedSubscription = { subscriptionId: found.subscriptionId, displayName: found.displayName };
+      selectedSubscription = {
+        subscriptionId: found.subscriptionId,
+        displayName: found.displayName,
+      };
     }
 
     const eligibleRoles = await fetchEligibleRolesForSubscription(
@@ -784,7 +830,10 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
     showSummary("Activation Summary", [
       { label: "Subscription", value: selectedSubscription.displayName },
       { label: "Role(s)", value: selectedRoleNames },
-      { label: "Duration", value: `${activationDetails.durationHours} hour(s)` },
+      {
+        label: "Duration",
+        value: `${activationDetails.durationHours} hour(s)`,
+      },
       { label: "Justification", value: activationDetails.justification },
     ]);
 
@@ -864,13 +913,18 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
 
     if (subscriptions.length === 0) {
       logWarning("No subscriptions found.");
-      const { action } = await inquirer.prompt<{ action: "enter" | "back" | "exit" }>([
+      const { action } = await inquirer.prompt<{
+        action: "enter" | "back" | "exit";
+      }>([
         {
           type: "select",
           name: "action",
           message: chalk.yellow("No subscriptions found. What would you like to do?"),
           choices: [
-            { name: chalk.cyan("Enter subscription ID manually"), value: "enter" },
+            {
+              name: chalk.cyan("Enter subscription ID manually"),
+              value: "enter",
+            },
             { name: chalk.cyan("↩ Back to Main Menu"), value: "back" },
             { name: chalk.red("✕ Exit"), value: "exit" },
           ],
@@ -896,7 +950,11 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
             },
           },
         ]);
-        subscriptions.push({ subscriptionId: manualId.trim(), displayName: manualId.trim(), tenantId: "" } as any);
+        subscriptions.push({
+          subscriptionId: manualId.trim(),
+          displayName: manualId.trim(),
+          tenantId: "",
+        } as any);
       }
     }
 
@@ -1017,5 +1075,597 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
   } catch (error: any) {
     logError(`Error during deactivation: ${error.message || error}`);
     return;
+  }
+};
+
+// =============================================================================
+// Approvals - Types
+// =============================================================================
+
+export type ApprovalsListResult = {
+  pendingApprovals: PendingApproval[];
+  count: number;
+};
+
+export type ApprovalsApproveOptions = {
+  approvalId?: string;
+  justification?: string;
+  yes?: boolean;
+};
+
+export type ApprovalsRejectOptions = {
+  approvalId?: string;
+  justification?: string;
+  yes?: boolean;
+};
+
+export type AssignmentsListOptions = {
+  subscriptionId?: string;
+  filterUser?: string;
+};
+
+export type AssignmentsListResult = {
+  assignments: AllActiveAssignment[];
+  count: number;
+};
+
+export type AssignmentsDeactivateOptions = {
+  assignmentId?: string;
+  subscriptionId?: string;
+  justification?: string;
+  yes?: boolean;
+};
+
+// =============================================================================
+// Approvals - One-Shot Functions
+// =============================================================================
+
+/**
+ * List pending approval requests (one-shot).
+ */
+export const approvalsListOnce = async (authContext: AuthContext): Promise<ApprovalsListResult> => {
+  logBlank();
+  logInfo("Fetching pending approval requests...");
+  logBlank();
+
+  const pendingApprovals = await fetchPendingApprovals(authContext.credential);
+
+  if (pendingApprovals.length === 0) {
+    logInfo("No pending approval requests.");
+  } else {
+    logBlank();
+    logInfo(`Found ${pendingApprovals.length} pending approval(s):`);
+    logBlank();
+    for (const approval of pendingApprovals) {
+      console.log(
+        `  ${chalk.dim("•")} ${formatPendingApproval(
+          approval.roleName,
+          approval.scopeDisplayName,
+          approval.requestor.displayName,
+          approval.requestedDateTime,
+        )}`,
+      );
+      console.log(`    ${chalk.dim("ID:")} ${chalk.cyan(approval.approvalId)}`);
+    }
+  }
+
+  return {
+    pendingApprovals,
+    count: pendingApprovals.length,
+  };
+};
+
+/**
+ * Approve a pending request (one-shot or interactive).
+ */
+export const approvalsApproveOnce = async (authContext: AuthContext, options: ApprovalsApproveOptions): Promise<ApprovalDecisionResult> => {
+  logBlank();
+
+  let approvalId = options.approvalId;
+  let justification = options.justification ?? "Approved via azpim";
+  let stageId: string | undefined;
+
+  // If no approval ID provided, show interactive selection
+  if (!approvalId) {
+    const pendingApprovals = await fetchPendingApprovals(authContext.credential);
+
+    if (pendingApprovals.length === 0) {
+      throw new Error("No pending approval requests found.");
+    }
+
+    logBlank();
+    const { selectedApprovalId } = await inquirer.prompt<{
+      selectedApprovalId: string;
+    }>([
+      {
+        type: "select",
+        name: "selectedApprovalId",
+        message: chalk.cyan("Select a request to approve:"),
+        choices: pendingApprovals.map((a) => ({
+          name: formatPendingApproval(a.roleName, a.scopeDisplayName, a.requestor.displayName, a.requestedDateTime),
+          value: a.approvalId,
+        })),
+        pageSize: 15,
+      },
+    ]);
+
+    approvalId = selectedApprovalId;
+    const approval = pendingApprovals.find((a) => a.approvalId === approvalId);
+    stageId = approval?.currentStage?.stageId;
+
+    // Show details and get justification
+    if (approval) {
+      logBlank();
+      const details = formatPendingApprovalDetailed(
+        approval.roleName,
+        approval.scopeDisplayName,
+        approval.requestor.displayName,
+        approval.requestor.userPrincipalName,
+        approval.justification,
+        approval.requestedDurationHours,
+        approval.requestedDateTime,
+      );
+      for (const line of details) {
+        console.log(`  ${line}`);
+      }
+      logBlank();
+    }
+
+    if (!options.justification) {
+      const { inputJustification } = await inquirer.prompt<{
+        inputJustification: string;
+      }>([
+        {
+          type: "input",
+          name: "inputJustification",
+          message: chalk.cyan("Justification for approval (optional):"),
+          default: "Approved via azpim",
+        },
+      ]);
+      justification = inputJustification;
+    }
+  } else {
+    // Fetch details for the provided approval ID
+    const approval = await getApprovalDetails(authContext.credential, approvalId);
+    if (!approval) {
+      throw new Error(`Approval not found: ${approvalId}`);
+    }
+    stageId = approval.currentStage?.stageId;
+
+    if (!stageId) {
+      throw new Error("No actionable approval stage found for this request.");
+    }
+  }
+
+  if (!stageId) {
+    throw new Error("Could not determine approval stage ID.");
+  }
+
+  // Confirm
+  if (!options.yes) {
+    const { confirmApprove } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "confirmApprove",
+        message: chalk.green("Confirm approval?"),
+        default: true,
+      },
+    ]);
+
+    if (!confirmApprove) {
+      return {
+        approvalId,
+        stageId,
+        decision: "Approve",
+        justification,
+        reviewedDateTime: new Date(),
+        success: false,
+        error: "Cancelled by user",
+      };
+    }
+  }
+
+  return submitApprovalDecision(authContext.credential, approvalId, stageId, "Approve", justification);
+};
+
+/**
+ * Reject a pending request (one-shot or interactive).
+ */
+export const approvalsRejectOnce = async (authContext: AuthContext, options: ApprovalsRejectOptions): Promise<ApprovalDecisionResult> => {
+  logBlank();
+
+  let approvalId = options.approvalId;
+  let justification = options.justification;
+  let stageId: string | undefined;
+
+  // Justification is required for rejection
+  if (options.approvalId && !options.justification) {
+    throw new Error("--justification is required when rejecting a request.");
+  }
+
+  // If no approval ID provided, show interactive selection
+  if (!approvalId) {
+    const pendingApprovals = await fetchPendingApprovals(authContext.credential);
+
+    if (pendingApprovals.length === 0) {
+      throw new Error("No pending approval requests found.");
+    }
+
+    logBlank();
+    const { selectedApprovalId } = await inquirer.prompt<{
+      selectedApprovalId: string;
+    }>([
+      {
+        type: "select",
+        name: "selectedApprovalId",
+        message: chalk.cyan("Select a request to reject:"),
+        choices: pendingApprovals.map((a) => ({
+          name: formatPendingApproval(a.roleName, a.scopeDisplayName, a.requestor.displayName, a.requestedDateTime),
+          value: a.approvalId,
+        })),
+        pageSize: 15,
+      },
+    ]);
+
+    approvalId = selectedApprovalId;
+    const approval = pendingApprovals.find((a) => a.approvalId === approvalId);
+    stageId = approval?.currentStage?.stageId;
+
+    // Show details and get justification
+    if (approval) {
+      logBlank();
+      const details = formatPendingApprovalDetailed(
+        approval.roleName,
+        approval.scopeDisplayName,
+        approval.requestor.displayName,
+        approval.requestor.userPrincipalName,
+        approval.justification,
+        approval.requestedDurationHours,
+        approval.requestedDateTime,
+      );
+      for (const line of details) {
+        console.log(`  ${line}`);
+      }
+      logBlank();
+    }
+
+    // Justification is required
+    const { inputJustification } = await inquirer.prompt<{
+      inputJustification: string;
+    }>([
+      {
+        type: "input",
+        name: "inputJustification",
+        message: chalk.cyan("Justification for rejection (required):"),
+        validate: (value) => {
+          if (value.trim().length >= 5) return true;
+          return chalk.red("Justification must be at least 5 characters.");
+        },
+      },
+    ]);
+    justification = inputJustification;
+  } else {
+    // Fetch details for the provided approval ID
+    const approval = await getApprovalDetails(authContext.credential, approvalId);
+    if (!approval) {
+      throw new Error(`Approval not found: ${approvalId}`);
+    }
+    stageId = approval.currentStage?.stageId;
+
+    if (!stageId) {
+      throw new Error("No actionable approval stage found for this request.");
+    }
+  }
+
+  if (!stageId) {
+    throw new Error("Could not determine approval stage ID.");
+  }
+
+  if (!justification) {
+    throw new Error("Justification is required for rejection.");
+  }
+
+  // Confirm
+  if (!options.yes) {
+    const { confirmReject } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "confirmReject",
+        message: chalk.red("Confirm rejection?"),
+        default: false,
+      },
+    ]);
+
+    if (!confirmReject) {
+      return {
+        approvalId,
+        stageId,
+        decision: "Deny",
+        justification,
+        reviewedDateTime: new Date(),
+        success: false,
+        error: "Cancelled by user",
+      };
+    }
+  }
+
+  return submitApprovalDecision(authContext.credential, approvalId, stageId, "Deny", justification);
+};
+
+// =============================================================================
+// Assignments - One-Shot Functions
+// =============================================================================
+
+/**
+ * List all active assignments (one-shot).
+ */
+export const assignmentsListOnce = async (authContext: AuthContext, options: AssignmentsListOptions): Promise<AssignmentsListResult> => {
+  logBlank();
+  logInfo("Fetching active PIM assignments...");
+  logBlank();
+
+  let subscriptions: { subscriptionId: string; displayName: string }[];
+
+  if (options.subscriptionId) {
+    subscriptions = [
+      {
+        subscriptionId: options.subscriptionId,
+        displayName: options.subscriptionId,
+      },
+    ];
+  } else {
+    subscriptions = await fetchSubscriptions(authContext.credential);
+  }
+
+  let allAssignments: AllActiveAssignment[] = [];
+
+  for (const sub of subscriptions) {
+    const assignments = await fetchAllActiveAssignments(authContext.credential, sub.subscriptionId, sub.displayName);
+    allAssignments = allAssignments.concat(assignments);
+  }
+
+  // Apply user filter if provided
+  if (options.filterUser) {
+    const filter = options.filterUser.toLowerCase();
+    allAssignments = allAssignments.filter(
+      (a) => a.principal.displayName.toLowerCase().includes(filter) || a.principal.userPrincipalName?.toLowerCase().includes(filter),
+    );
+  }
+
+  if (allAssignments.length === 0) {
+    logInfo("No active assignments found.");
+  } else {
+    logBlank();
+    logInfo(`Found ${allAssignments.length} active assignment(s):`);
+    logBlank();
+    for (const assignment of allAssignments) {
+      console.log(
+        `  ${chalk.dim("•")} ${formatAssignment(
+          assignment.roleName,
+          assignment.scopeDisplayName,
+          assignment.principal.displayName,
+          assignment.endDateTime,
+        )}`,
+      );
+    }
+  }
+
+  return {
+    assignments: allAssignments,
+    count: allAssignments.length,
+  };
+};
+
+/**
+ * Deactivate another user's assignment (one-shot or interactive).
+ */
+export const assignmentsDeactivateOnce = async (
+  authContext: AuthContext,
+  options: AssignmentsDeactivateOptions,
+): Promise<{ success: boolean; error?: string }> => {
+  logBlank();
+
+  let selectedAssignment: AllActiveAssignment | undefined;
+  let justification = options.justification ?? "Deactivated via azpim (admin action)";
+
+  if (options.assignmentId && options.subscriptionId) {
+    // Fetch assignments for the subscription and find by ID
+    const assignments = await fetchAllActiveAssignments(authContext.credential, options.subscriptionId, options.subscriptionId);
+    selectedAssignment = assignments.find((a) => a.assignmentId === options.assignmentId);
+
+    if (!selectedAssignment) {
+      throw new Error(`Assignment not found: ${options.assignmentId}`);
+    }
+  } else {
+    // Interactive selection
+    const subscriptions = await fetchSubscriptions(authContext.credential);
+
+    if (subscriptions.length === 0) {
+      throw new Error("No subscriptions found.");
+    }
+
+    logBlank();
+    const { selectedSubscriptionId } = await inquirer.prompt<{
+      selectedSubscriptionId: string;
+    }>([
+      {
+        type: "select",
+        name: "selectedSubscriptionId",
+        message: chalk.cyan("Select a subscription:"),
+        choices: subscriptions.map((s) => ({
+          name: formatSubscription(s.displayName, s.subscriptionId),
+          value: s.subscriptionId,
+        })),
+        pageSize: 15,
+      },
+    ]);
+
+    const sub = subscriptions.find((s) => s.subscriptionId === selectedSubscriptionId);
+    const assignments = await fetchAllActiveAssignments(authContext.credential, selectedSubscriptionId, sub?.displayName || selectedSubscriptionId);
+
+    if (assignments.length === 0) {
+      throw new Error("No active assignments found in this subscription.");
+    }
+
+    logBlank();
+    const { selectedAssignmentId } = await inquirer.prompt<{
+      selectedAssignmentId: string;
+    }>([
+      {
+        type: "select",
+        name: "selectedAssignmentId",
+        message: chalk.cyan("Select an assignment to deactivate:"),
+        choices: assignments.map((a) => ({
+          name: formatAssignment(a.roleName, a.scopeDisplayName, a.principal.displayName, a.endDateTime),
+          value: a.assignmentId,
+        })),
+        pageSize: 15,
+      },
+    ]);
+
+    selectedAssignment = assignments.find((a) => a.assignmentId === selectedAssignmentId);
+
+    if (!selectedAssignment) {
+      throw new Error("Assignment not found.");
+    }
+
+    // Get justification
+    if (!options.justification) {
+      const { inputJustification } = await inquirer.prompt<{
+        inputJustification: string;
+      }>([
+        {
+          type: "input",
+          name: "inputJustification",
+          message: chalk.cyan("Justification for admin deactivation:"),
+          default: "Deactivated via azpim (admin action)",
+          validate: (value) => {
+            if (value.trim().length >= 5) return true;
+            return chalk.red("Justification must be at least 5 characters.");
+          },
+        },
+      ]);
+      justification = inputJustification;
+    }
+  }
+
+  // Show summary
+  showSummary("Admin Deactivation", [
+    { label: "Role", value: selectedAssignment.roleName },
+    { label: "Scope", value: selectedAssignment.scopeDisplayName },
+    { label: "User", value: selectedAssignment.principal.displayName },
+    { label: "Justification", value: justification },
+  ]);
+
+  // Confirm
+  if (!options.yes) {
+    const { confirmDeactivate } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "confirmDeactivate",
+        message: chalk.red("⚠ This will deactivate another user's role. Confirm?"),
+        default: false,
+      },
+    ]);
+
+    if (!confirmDeactivate) {
+      logWarning("Admin deactivation cancelled.");
+      return { success: false, error: "Cancelled by user" };
+    }
+  }
+
+  return adminDeactivateAssignment(authContext.credential, selectedAssignment, justification);
+};
+
+// =============================================================================
+// Interactive Menus for Approvals & Assignments
+// =============================================================================
+
+/**
+ * Interactive menu for approvals.
+ */
+export const showApprovalsMenu = async (authContext: AuthContext): Promise<void> => {
+  while (true) {
+    logBlank();
+    const { action } = await inquirer.prompt<{
+      action: "list" | "approve" | "reject" | "back";
+    }>([
+      {
+        type: "select",
+        name: "action",
+        message: chalk.cyan.bold("Approvals Menu:"),
+        choices: [
+          { name: chalk.cyan("📋 View pending requests"), value: "list" },
+          { name: chalk.green("✔ Approve a request"), value: "approve" },
+          { name: chalk.red("✖ Reject a request"), value: "reject" },
+          { name: chalk.dim("↩ Back to Main Menu"), value: "back" },
+        ],
+        default: "list",
+      },
+    ]);
+
+    switch (action) {
+      case "list":
+        await approvalsListOnce(authContext);
+        break;
+      case "approve":
+        try {
+          await approvalsApproveOnce(authContext, {});
+        } catch (error: any) {
+          logError(error.message);
+        }
+        break;
+      case "reject":
+        try {
+          await approvalsRejectOnce(authContext, {});
+        } catch (error: any) {
+          logError(error.message);
+        }
+        break;
+      case "back":
+        return;
+    }
+  }
+};
+
+/**
+ * Interactive menu for assignments.
+ */
+export const showAssignmentsMenu = async (authContext: AuthContext): Promise<void> => {
+  while (true) {
+    logBlank();
+    const { action } = await inquirer.prompt<{
+      action: "list" | "deactivate" | "back";
+    }>([
+      {
+        type: "select",
+        name: "action",
+        message: chalk.cyan.bold("All Assignments Menu:"),
+        choices: [
+          { name: chalk.cyan("👥 View all active assignments"), value: "list" },
+          {
+            name: chalk.red("🛑 Deactivate user's role (Admin)"),
+            value: "deactivate",
+          },
+          { name: chalk.dim("↩ Back to Main Menu"), value: "back" },
+        ],
+        default: "list",
+      },
+    ]);
+
+    switch (action) {
+      case "list":
+        await assignmentsListOnce(authContext, {});
+        break;
+      case "deactivate":
+        try {
+          await assignmentsDeactivateOnce(authContext, {});
+        } catch (error: any) {
+          logError(error.message);
+        }
+        break;
+      case "back":
+        return;
+    }
   }
 };

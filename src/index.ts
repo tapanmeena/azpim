@@ -4,7 +4,16 @@ import { Command } from "commander";
 import inquirer from "inquirer";
 import { name as npmPackageName, version } from "../package.json";
 import { authenticate } from "./auth";
-import { activateOnce, deactivateOnce, showMainMenu } from "./cli";
+import {
+  activateOnce,
+  approvalsApproveOnce,
+  approvalsListOnce,
+  approvalsRejectOnce,
+  assignmentsDeactivateOnce,
+  assignmentsListOnce,
+  deactivateOnce,
+  showMainMenu,
+} from "./cli";
 import {
   expandTemplate,
   getDefaultPresetsFilePath,
@@ -62,6 +71,43 @@ type UpdateCommandOptions = {
   output?: OutputFormat;
   quiet?: boolean;
   checkOnly?: boolean;
+};
+
+type ApprovalsListCommandOptions = {
+  output?: OutputFormat;
+  quiet?: boolean;
+};
+
+type ApprovalsApproveCommandOptions = {
+  approvalId?: string;
+  justification?: string;
+  yes?: boolean;
+  output?: OutputFormat;
+  quiet?: boolean;
+};
+
+type ApprovalsRejectCommandOptions = {
+  approvalId?: string;
+  justification?: string;
+  yes?: boolean;
+  output?: OutputFormat;
+  quiet?: boolean;
+};
+
+type AssignmentsListCommandOptions = {
+  subscriptionId?: string;
+  filterUser?: string;
+  output?: OutputFormat;
+  quiet?: boolean;
+};
+
+type AssignmentsDeactivateCommandOptions = {
+  assignmentId?: string;
+  subscriptionId?: string;
+  justification?: string;
+  yes?: boolean;
+  output?: OutputFormat;
+  quiet?: boolean;
 };
 
 const maybeNotifyUpdate = async (output: OutputFormat, quiet: boolean): Promise<void> => {
@@ -615,7 +661,9 @@ presetCommand
       });
 
       if (!cmd.yes) {
-        const { confirmSave } = await inquirer.prompt<{ confirmSave: boolean }>([
+        const { confirmSave } = await inquirer.prompt<{
+          confirmSave: boolean;
+        }>([
           {
             type: "confirm",
             name: "confirmSave",
@@ -759,7 +807,9 @@ presetCommand
       }
 
       if (!cmd.yes) {
-        const { confirmRemove } = await inquirer.prompt<{ confirmRemove: boolean }>([
+        const { confirmRemove } = await inquirer.prompt<{
+          confirmRemove: boolean;
+        }>([
           {
             type: "confirm",
             name: "confirmRemove",
@@ -784,6 +834,219 @@ presetCommand
       }
 
       logSuccess(`Preset removed: ${name}`);
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Approvals Commands
+// =============================================================================
+
+const approvalsCommand = program.command("approvals").description("Manage PIM approval requests (for approvers)");
+
+approvalsCommand
+  .command("list", { isDefault: true })
+  .description("List pending PIM approval requests")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (cmd: ApprovalsListCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+      await maybeNotifyUpdate(output, quiet);
+
+      const authContext = await authenticate();
+      const result = await approvalsListOnce(authContext);
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
+      }
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+approvalsCommand
+  .command("approve")
+  .description("Approve a pending PIM request")
+  .option("--approval-id <id>", "Approval ID (required for non-interactive)")
+  .option("--justification <text>", "Justification for approval")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (cmd: ApprovalsApproveCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+      await maybeNotifyUpdate(output, quiet);
+
+      const authContext = await authenticate();
+      const result = await approvalsApproveOnce(authContext, {
+        approvalId: cmd.approvalId,
+        justification: cmd.justification,
+        yes: cmd.yes,
+      });
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: result.success, ...result }, null, 2)}\n`);
+        if (!result.success) process.exit(1);
+      }
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+approvalsCommand
+  .command("reject")
+  .description("Reject a pending PIM request")
+  .option("--approval-id <id>", "Approval ID (required for non-interactive)")
+  .option("--justification <text>", "Justification for rejection (required)")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (cmd: ApprovalsRejectCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+      await maybeNotifyUpdate(output, quiet);
+
+      const authContext = await authenticate();
+      const result = await approvalsRejectOnce(authContext, {
+        approvalId: cmd.approvalId,
+        justification: cmd.justification,
+        yes: cmd.yes,
+      });
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: result.success, ...result }, null, 2)}\n`);
+        if (!result.success) process.exit(1);
+      }
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Assignments Commands
+// =============================================================================
+
+const assignmentsCommand = program.command("assignments").description("View and manage all active PIM assignments");
+
+assignmentsCommand
+  .command("list", { isDefault: true })
+  .description("List all active PIM role assignments")
+  .option("--subscription-id <id>", "Filter by subscription ID")
+  .option("--filter-user <upn>", "Filter by user principal name or display name")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (cmd: AssignmentsListCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+      await maybeNotifyUpdate(output, quiet);
+
+      const authContext = await authenticate();
+      const result = await assignmentsListOnce(authContext, {
+        subscriptionId: cmd.subscriptionId,
+        filterUser: cmd.filterUser,
+      });
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: true, ...result }, null, 2)}\n`);
+      }
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+assignmentsCommand
+  .command("deactivate")
+  .description("Deactivate another user's PIM role assignment (admin action)")
+  .option("--assignment-id <id>", "Assignment ID to deactivate")
+  .option("--subscription-id <id>", "Subscription ID (required with --assignment-id)")
+  .option("--justification <text>", "Justification for deactivation")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (cmd: AssignmentsDeactivateCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+      await maybeNotifyUpdate(output, quiet);
+
+      const authContext = await authenticate();
+      const result = await assignmentsDeactivateOnce(authContext, {
+        assignmentId: cmd.assignmentId,
+        subscriptionId: cmd.subscriptionId,
+        justification: cmd.justification,
+        yes: cmd.yes,
+      });
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: result.success, ...result }, null, 2)}\n`);
+        if (!result.success) process.exit(1);
+      }
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const output = (cmd.output ?? "text") as OutputFormat;

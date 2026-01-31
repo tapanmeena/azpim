@@ -257,7 +257,7 @@ export const formatRole = (roleName: string, scopeDisplayName: string): string =
 export const formatActiveRole = (roleName: string, scopeDisplayName: string, subscriptionName: string, startDateTime: string): string => {
   const startDate = new Date(startDateTime).toLocaleString();
   return `${chalk.white.bold(roleName)} ${chalk.dim("@")} ${chalk.cyan(scopeDisplayName)} ${chalk.dim(`(${subscriptionName})`)} ${chalk.dim(
-    `[Started: ${startDate}]`
+    `[Started: ${startDate}]`,
   )}`;
 };
 
@@ -276,16 +276,119 @@ export const formatStatus = (status: string): string => {
     case "approved":
     case "provisioned":
     case "activated":
+    case "completed":
       return chalk.green.bold(`✔ ${status}`);
     case "denied":
     case "failed":
+    case "deny":
       return chalk.red.bold(`✖ ${status}`);
     case "pendingapproval":
     case "pending":
+    case "inprogress":
+    case "notreviewed":
       return chalk.yellow.bold(`⏳ ${status}`);
+    case "escalating":
+    case "escalated":
+      return chalk.magenta.bold(`↗ ${status}`);
+    case "expired":
+      return chalk.dim(`⏱ ${status}`);
     default:
       return chalk.cyanBright.bold(`ℹ ${status}`);
   }
+};
+
+// ===============================
+// Approval & Assignment Formatters
+// ===============================
+
+/**
+ * Formats a requestor display with name and email.
+ */
+export const formatRequestor = (displayName: string, email?: string): string => {
+  if (email) {
+    return `${chalk.white.bold(displayName)} ${chalk.dim(`<${email}>`)}`;
+  }
+  return chalk.white.bold(displayName);
+};
+
+/**
+ * Formats a pending approval request for display in lists.
+ */
+export const formatPendingApproval = (roleName: string, scopeDisplayName: string, requestorName: string, requestedDateTime: Date): string => {
+  const timeAgo = getRelativeTime(requestedDateTime);
+  return `${chalk.white.bold(roleName)} ${chalk.dim("@")} ${chalk.cyan(scopeDisplayName)} ${chalk.dim("←")} ${chalk.yellow(requestorName)} ${chalk.dim(`(${timeAgo})`)}`;
+};
+
+/**
+ * Formats a pending approval for detailed view.
+ */
+export const formatPendingApprovalDetailed = (
+  roleName: string,
+  scopeDisplayName: string,
+  requestorName: string,
+  requestorEmail: string,
+  justification: string,
+  durationHours: number,
+  requestedDateTime: Date,
+): string[] => {
+  const timeAgo = getRelativeTime(requestedDateTime);
+  return [
+    `${chalk.dim("Role:")}          ${chalk.white.bold(roleName)}`,
+    `${chalk.dim("Scope:")}         ${chalk.cyan(scopeDisplayName)}`,
+    `${chalk.dim("Requestor:")}     ${formatRequestor(requestorName, requestorEmail)}`,
+    `${chalk.dim("Duration:")}      ${chalk.white(`${durationHours} hour(s)`)}`,
+    `${chalk.dim("Justification:")} ${chalk.white(justification || "(none)")}`,
+    `${chalk.dim("Requested:")}     ${chalk.white(requestedDateTime.toLocaleString())} ${chalk.dim(`(${timeAgo})`)}`,
+  ];
+};
+
+/**
+ * Formats an active assignment (for any user) for display in lists.
+ */
+export const formatAssignment = (roleName: string, scopeDisplayName: string, principalName: string, endDateTime: Date): string => {
+  const expiresIn = getRelativeTime(endDateTime, true);
+  return `${chalk.white.bold(roleName)} ${chalk.dim("@")} ${chalk.cyan(scopeDisplayName)} ${chalk.dim("→")} ${chalk.green(principalName)} ${chalk.dim(`(expires ${expiresIn})`)}`;
+};
+
+/**
+ * Formats an approval decision for display.
+ */
+export const formatApprovalDecision = (decision: "Approve" | "Deny"): string => {
+  if (decision === "Approve") {
+    return chalk.green.bold("✔ Approved");
+  }
+  return chalk.red.bold("✖ Denied");
+};
+
+/**
+ * Gets relative time string (e.g., "2 hours ago" or "in 3 hours").
+ */
+const getRelativeTime = (date: Date, future = false): string => {
+  const now = new Date();
+  const diffMs = future ? date.getTime() - now.getTime() : now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 0) {
+    return future ? "expired" : "just now";
+  }
+
+  if (diffMins < 60) {
+    const suffix = future ? "" : " ago";
+    const prefix = future ? "in " : "";
+    return `${prefix}${diffMins} minute${diffMins !== 1 ? "s" : ""}${suffix}`;
+  }
+
+  if (diffHours < 24) {
+    const suffix = future ? "" : " ago";
+    const prefix = future ? "in " : "";
+    return `${prefix}${diffHours} hour${diffHours !== 1 ? "s" : ""}${suffix}`;
+  }
+
+  const suffix = future ? "" : " ago";
+  const prefix = future ? "in " : "";
+  return `${prefix}${diffDays} day${diffDays !== 1 ? "s" : ""}${suffix}`;
 };
 
 /**
