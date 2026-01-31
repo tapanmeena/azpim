@@ -4,13 +4,30 @@ import { AuthContext } from "./auth";
 import {
   activateAzureRole,
   ActiveAzureRole,
+  AzureSubscription,
   deactivateAzureRole,
   fetchEligibleRolesForSubscription,
   fetchSubscriptions,
   listActiveAzureRoles,
 } from "./azure-pim";
 import {
+  addFavorite,
+  clearFavorites,
+  exportFavorites,
+  getFavoriteIds,
+  importFavorites,
+  isFavorite,
+  loadFavorites,
+  removeFavorite,
+  saveFavorites,
+  toggleFavorite,
+} from "./favorites";
+import { formatCacheAge, getCacheAge, getSubscriptionNameMap, invalidateCache, validateSubscriptionId } from "./subscription-cache";
+import {
+  createSubscriptionSeparator,
   formatActiveRole,
+  formatFavoriteSubscription,
+  formatNonFavoriteSubscription,
   formatRole,
   formatSubscription,
   logBlank,
@@ -100,6 +117,164 @@ const validateDurationHours = (value: number): void => {
   }
 };
 
+// ===============================
+// Subscription Selector with Favorites & Search
+// ===============================
+
+const BACK_VALUE = "__BACK__";
+
+export type SubscriptionSelectResult = {
+  subscriptionId: string;
+  displayName: string;
+} | null;
+
+/**
+ * Builds subscription choices with favorites grouped at top.
+ */
+// Separator type for Inquirer choices
+type SeparatorChoice = { type: "separator"; separator?: string };
+type ChoiceItem = { name: string; value: string } | SeparatorChoice;
+
+const separator = (label?: string): SeparatorChoice => ({
+  type: "separator",
+  separator: label ?? "",
+});
+
+/**
+ * Builds subscription choices with favorites grouped at top.
+ */
+const buildSubscriptionChoices = (subscriptions: AzureSubscription[], favoriteIds: Set<string>): ChoiceItem[] => {
+  const favorites: AzureSubscription[] = [];
+  const others: AzureSubscription[] = [];
+
+  for (const sub of subscriptions) {
+    if (favoriteIds.has(sub.subscriptionId.toLowerCase())) {
+      favorites.push(sub);
+    } else {
+      others.push(sub);
+    }
+  }
+
+  // Sort both lists alphabetically
+  favorites.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  others.sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  const choices: ChoiceItem[] = [];
+
+  if (favorites.length > 0) {
+    choices.push(separator(createSubscriptionSeparator("Favorites")));
+    for (const sub of favorites) {
+      choices.push({
+        name: formatFavoriteSubscription(sub.displayName, sub.subscriptionId),
+        value: sub.subscriptionId,
+      });
+    }
+  }
+
+  if (others.length > 0) {
+    if (favorites.length > 0) {
+      choices.push(separator(createSubscriptionSeparator("All Subscriptions")));
+    }
+    for (const sub of others) {
+      choices.push({
+        name:
+          favorites.length > 0
+            ? formatNonFavoriteSubscription(sub.displayName, sub.subscriptionId)
+            : formatSubscription(sub.displayName, sub.subscriptionId),
+        value: sub.subscriptionId,
+      });
+    }
+  }
+
+  choices.push(separator());
+  choices.push({ name: chalk.dim("↩ Back to Main Menu"), value: BACK_VALUE });
+
+  return choices;
+};
+
+/**
+ * Try to use @inquirer/search for type-ahead, fallback to standard select.
+ */
+const selectSubscriptionWithSearch = async (subscriptions: AzureSubscription[], favoriteIds: Set<string>): Promise<SubscriptionSelectResult> => {
+  const choices = buildSubscriptionChoices(subscriptions, favoriteIds);
+
+  // Try @inquirer/search first for better type-ahead experience
+  try {
+    const searchModule = await import("@inquirer/search");
+    const search = searchModule.default;
+
+    // Build searchable items (excluding separators)
+    const searchableItems = subscriptions.map((sub) => {
+      const isFav = favoriteIds.has(sub.subscriptionId.toLowerCase());
+      return {
+        name: isFav ? formatFavoriteSubscription(sub.displayName, sub.subscriptionId) : formatSubscription(sub.displayName, sub.subscriptionId),
+        value: sub.subscriptionId,
+        displayName: sub.displayName,
+        isFavorite: isFav,
+      };
+    });
+
+    // Sort: favorites first, then alphabetically
+    searchableItems.sort((a, b) => {
+      if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+      return a.displayName.localeCompare(b.displayName);
+    });
+
+    // Add back option
+    searchableItems.push({
+      name: chalk.dim("↩ Back to Main Menu"),
+      value: BACK_VALUE,
+      displayName: "Back",
+      isFavorite: false,
+    });
+
+    const selectedId = await search({
+      message: chalk.cyan("Search and select a subscription (type to filter):"),
+      source: async (input: string | undefined) => {
+        const term = (input || "").toLowerCase();
+        if (!term) {
+          return searchableItems.map((item) => ({
+            name: item.name,
+            value: item.value,
+          }));
+        }
+        return searchableItems
+          .filter((item) => item.displayName.toLowerCase().includes(term) || item.value.toLowerCase().includes(term))
+          .map((item) => ({ name: item.name, value: item.value }));
+      },
+    });
+
+    if (selectedId === BACK_VALUE) {
+      return null;
+    }
+
+    const found = subscriptions.find((sub) => sub.subscriptionId === selectedId);
+    return found ? { subscriptionId: found.subscriptionId, displayName: found.displayName } : null;
+  } catch {
+    // Fallback to standard Inquirer select (v13 has built-in type-to-filter)
+    logDim("(Using standard selection - type to filter)");
+
+    const { selectedSubscriptionId } = await inquirer.prompt<{
+      selectedSubscriptionId: string;
+    }>([
+      {
+        type: "select",
+        name: "selectedSubscriptionId",
+        message: chalk.cyan("Select a subscription:"),
+        choices,
+        pageSize: 20,
+      },
+    ]);
+
+    if (selectedSubscriptionId === BACK_VALUE) {
+      return null;
+    }
+
+    const found = subscriptions.find((sub) => sub.subscriptionId === selectedSubscriptionId);
+    return found ? { subscriptionId: found.subscriptionId, displayName: found.displayName } : null;
+  }
+};
+
 export const activateOnce = async (authContext: AuthContext, options: ActivateOnceOptions): Promise<ActivateOnceResult> => {
   const durationHours = options.durationHours ?? 8;
   validateDurationHours(durationHours);
@@ -167,7 +342,10 @@ export const activateOnce = async (authContext: AuthContext, options: ActivateOn
           type: "checkbox",
           name: "selectedIds",
           message: chalk.cyan(`Select matches for "${name}":`),
-          choices: matches.map((r) => ({ name: formatRole(r.roleName, r.scopeDisplayName), value: r.id })),
+          choices: matches.map((r) => ({
+            name: formatRole(r.roleName, r.scopeDisplayName),
+            value: r.id,
+          })),
           validate: (answer) => {
             if (!Array.isArray(answer) || answer.length < 1) {
               return chalk.red("You must choose at least one role.");
@@ -215,7 +393,10 @@ export const activateOnce = async (authContext: AuthContext, options: ActivateOn
 
   showSummary("Activation Summary", [
     { label: "Subscription", value: selectedSubscription.displayName },
-    { label: "Role(s)", value: targets.map((t) => `${t.roleName} @ ${t.scopeDisplayName}`).join(", ") },
+    {
+      label: "Role(s)",
+      value: targets.map((t) => `${t.roleName} @ ${t.scopeDisplayName}`).join(", "),
+    },
     { label: "Duration", value: `${durationHours} hour(s)` },
     { label: "Justification", value: justification },
     { label: "Dry-run", value: options.dryRun ? "Yes" : "No" },
@@ -347,7 +528,10 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
   // if (subscriptions.length === 0) {
   //   throw new Error("No subscriptions found.");
   // }
-  let targetSubscriptions: Array<{ subscriptionId: string; displayName: string }>;
+  let targetSubscriptions: Array<{
+    subscriptionId: string;
+    displayName: string;
+  }>;
   if (options.subscriptionId?.trim()) {
     // Allow users without Reader permissions to deactivate roles via PIM
     // as long as they have active roles in the subscription.
@@ -358,7 +542,7 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
       },
     ];
   } else {
-    const subscriptions = await fetchSubscriptions(authContext.credential);
+    const subscriptions = await fetchSubscriptions(authContext.credential, authContext.userId);
     if (subscriptions.length === 0) {
       throw new Error("No subscriptions found. use --subscription-id to specify a subscription.");
     }
@@ -458,7 +642,10 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
   }
 
   showSummary("Deactivation Summary", [
-    { label: "Role(s)", value: targets.map((t) => `${t.roleName} @ ${t.scopeDisplayName} (${t.subscriptionName})`).join(", ") },
+    {
+      label: "Role(s)",
+      value: targets.map((t) => `${t.roleName} @ ${t.scopeDisplayName} (${t.subscriptionName})`).join(", "),
+    },
     { label: "Justification", value: justification },
     { label: "Dry-run", value: options.dryRun ? "Yes" : "No" },
   ]);
@@ -594,11 +781,323 @@ const promptBackToMainMenuOrExit = async (message: string): Promise<void> => {
   }
 };
 
+// ===============================
+// Favorites Manager
+// ===============================
+
+export const runFavoritesManager = async (authContext: AuthContext): Promise<void> => {
+  while (true) {
+    const favoritesLoaded = await loadFavorites(authContext.userId);
+    const favoritesData = favoritesLoaded.data;
+    const favoriteIds = getFavoriteIds(favoritesData);
+    const cacheAge = await getCacheAge(authContext.userId);
+    const subscriptionNames = await getSubscriptionNameMap(authContext.userId);
+
+    logBlank();
+    logInfo(`Favorites: ${favoriteIds.length} subscription(s)`);
+    logDim(`Cache: ${formatCacheAge(cacheAge)}`);
+    logBlank();
+
+    const { action } = await inquirer.prompt<{
+      action: "view" | "add" | "addById" | "remove" | "clear" | "import" | "export" | "refresh" | "back";
+    }>([
+      {
+        type: "select",
+        name: "action",
+        message: chalk.cyan("Favorites Menu:"),
+        choices: [
+          { name: chalk.cyanBright("📋 View/Edit Favorites"), value: "view" },
+          {
+            name: chalk.green("➕ Add Favorites from Subscriptions"),
+            value: "add",
+          },
+          {
+            name: chalk.green("🔢 Add Favorite by Subscription ID"),
+            value: "addById",
+          },
+          { name: chalk.yellow("➖ Remove Favorites"), value: "remove" },
+          { name: chalk.red("🗑  Clear All Favorites"), value: "clear" },
+          separator(),
+          {
+            name: chalk.blue("📥 Import Favorites from File"),
+            value: "import",
+          },
+          { name: chalk.blue("📤 Export Favorites to File"), value: "export" },
+          separator(),
+          {
+            name: chalk.magenta("🔄 Refresh Subscription Cache"),
+            value: "refresh",
+          },
+          separator(),
+          { name: chalk.dim("↩ Back to Main Menu"), value: "back" },
+        ],
+        pageSize: 15,
+      },
+    ]);
+
+    if (action === "back") {
+      return;
+    }
+
+    switch (action) {
+      case "view": {
+        if (favoriteIds.length === 0) {
+          logWarning("No favorites yet. Add some subscriptions to favorites first.");
+          break;
+        }
+        logBlank();
+        logInfo("Current Favorites:");
+        for (const id of favoriteIds) {
+          const name = subscriptionNames.get(id) || "(name not cached)";
+          console.log(`  ${chalk.yellow("★")} ${chalk.cyanBright(name)} ${chalk.dim(`(${id})`)}`);
+        }
+        logBlank();
+        break;
+      }
+
+      case "add": {
+        const subscriptions = await fetchSubscriptions(authContext.credential, authContext.userId);
+        if (subscriptions.length === 0) {
+          logWarning("No subscriptions available.");
+          break;
+        }
+
+        const favoriteSet = new Set(favoriteIds.map((id) => id.toLowerCase()));
+        const nonFavorites = subscriptions.filter((sub) => !favoriteSet.has(sub.subscriptionId.toLowerCase()));
+
+        if (nonFavorites.length === 0) {
+          logInfo("All subscriptions are already favorites!");
+          break;
+        }
+
+        const { selectedIds } = await inquirer.prompt<{
+          selectedIds: string[];
+        }>([
+          {
+            type: "checkbox",
+            name: "selectedIds",
+            message: chalk.cyan("Select subscriptions to add to favorites:"),
+            choices: nonFavorites
+              .sort((a, b) => a.displayName.localeCompare(b.displayName))
+              .map((sub) => ({
+                name: formatSubscription(sub.displayName, sub.subscriptionId),
+                value: sub.subscriptionId,
+              })),
+            pageSize: 15,
+          },
+        ]);
+
+        if (selectedIds.length === 0) {
+          logDim("No subscriptions selected.");
+          break;
+        }
+
+        let updatedData = favoritesData;
+        for (const id of selectedIds) {
+          updatedData = addFavorite(updatedData, id);
+        }
+        await saveFavorites(favoritesLoaded.filePath, updatedData);
+        logSuccess(`Added ${selectedIds.length} subscription(s) to favorites.`);
+        break;
+      }
+
+      case "addById": {
+        const { subscriptionId } = await inquirer.prompt<{
+          subscriptionId: string;
+        }>([
+          {
+            type: "input",
+            name: "subscriptionId",
+            message: chalk.cyan("Enter subscription ID:"),
+            validate: (value) => {
+              if (!value || !value.trim()) return chalk.red("Please enter a subscription ID.");
+              return true;
+            },
+          },
+        ]);
+
+        const normalizedId = subscriptionId.trim();
+
+        // Check if already a favorite
+        if (isFavorite(favoritesData, normalizedId)) {
+          logInfo("This subscription is already a favorite.");
+          break;
+        }
+
+        // Validate against cache
+        const validation = await validateSubscriptionId(authContext.userId, normalizedId);
+        if (validation.valid && validation.subscription) {
+          const updatedData = addFavorite(favoritesData, normalizedId);
+          await saveFavorites(favoritesLoaded.filePath, updatedData);
+          logSuccess(`Added "${validation.subscription.displayName}" to favorites.`);
+        } else {
+          logWarning("Subscription not found in cache. It may be invalid or inaccessible.");
+          const { forceAdd } = await inquirer.prompt<{ forceAdd: boolean }>([
+            {
+              type: "confirm",
+              name: "forceAdd",
+              message: chalk.yellow("Add anyway?"),
+              default: false,
+            },
+          ]);
+
+          if (forceAdd) {
+            const updatedData = addFavorite(favoritesData, normalizedId);
+            await saveFavorites(favoritesLoaded.filePath, updatedData);
+            logWarning(`Added invalidated subscription ID "${normalizedId}" to favorites.`);
+          } else {
+            logDim("Cancelled.");
+          }
+        }
+        break;
+      }
+
+      case "remove": {
+        if (favoriteIds.length === 0) {
+          logWarning("No favorites to remove.");
+          break;
+        }
+
+        const { selectedIds } = await inquirer.prompt<{
+          selectedIds: string[];
+        }>([
+          {
+            type: "checkbox",
+            name: "selectedIds",
+            message: chalk.cyan("Select favorites to remove:"),
+            choices: favoriteIds.map((id) => {
+              const name = subscriptionNames.get(id) || "(name not cached)";
+              return {
+                name: `${chalk.yellow("★")} ${chalk.cyanBright(name)} ${chalk.dim(`(${id})`)}`,
+                value: id,
+              };
+            }),
+            pageSize: 15,
+          },
+        ]);
+
+        if (selectedIds.length === 0) {
+          logDim("No favorites selected for removal.");
+          break;
+        }
+
+        let updatedData = favoritesData;
+        for (const id of selectedIds) {
+          updatedData = removeFavorite(updatedData, id);
+        }
+        await saveFavorites(favoritesLoaded.filePath, updatedData);
+        logSuccess(`Removed ${selectedIds.length} subscription(s) from favorites.`);
+        break;
+      }
+
+      case "clear": {
+        if (favoriteIds.length === 0) {
+          logWarning("No favorites to clear.");
+          break;
+        }
+
+        const { confirmClear } = await inquirer.prompt<{
+          confirmClear: boolean;
+        }>([
+          {
+            type: "confirm",
+            name: "confirmClear",
+            message: chalk.red(`Are you sure you want to clear all ${favoriteIds.length} favorite(s)?`),
+            default: false,
+          },
+        ]);
+
+        if (confirmClear) {
+          const updatedData = clearFavorites(favoritesData);
+          await saveFavorites(favoritesLoaded.filePath, updatedData);
+          logSuccess("All favorites cleared.");
+        } else {
+          logDim("Cancelled.");
+        }
+        break;
+      }
+
+      case "import": {
+        const { filePath } = await inquirer.prompt<{ filePath: string }>([
+          {
+            type: "input",
+            name: "filePath",
+            message: chalk.cyan("Path to import file:"),
+            validate: (value) => {
+              if (!value || !value.trim()) return chalk.red("Please enter a file path.");
+              return true;
+            },
+          },
+        ]);
+
+        const { merge } = await inquirer.prompt<{ merge: boolean }>([
+          {
+            type: "confirm",
+            name: "merge",
+            message: chalk.cyan("Merge with existing favorites? (No = replace)"),
+            default: true,
+          },
+        ]);
+
+        try {
+          const { data: importedData, result } = await importFavorites(favoritesData, filePath.trim(), merge);
+          await saveFavorites(favoritesLoaded.filePath, importedData);
+          logSuccess(`Imported ${result.imported} new favorite(s), ${result.skipped} already existed.`);
+        } catch (err: any) {
+          logError(`Import failed: ${err.message || err}`);
+        }
+        break;
+      }
+
+      case "export": {
+        if (favoriteIds.length === 0) {
+          logWarning("No favorites to export.");
+          break;
+        }
+
+        const { filePath } = await inquirer.prompt<{ filePath: string }>([
+          {
+            type: "input",
+            name: "filePath",
+            message: chalk.cyan("Path to export file:"),
+            default: "azpim-favorites.json",
+            validate: (value) => {
+              if (!value || !value.trim()) return chalk.red("Please enter a file path.");
+              return true;
+            },
+          },
+        ]);
+
+        try {
+          await exportFavorites(favoritesData, filePath.trim(), subscriptionNames);
+          logSuccess(`Exported ${favoriteIds.length} favorite(s) to ${filePath.trim()}`);
+        } catch (err: any) {
+          logError(`Export failed: ${err.message || err}`);
+        }
+        break;
+      }
+
+      case "refresh": {
+        logInfo("Invalidating subscription cache...");
+        await invalidateCache(authContext.userId);
+        logInfo("Fetching fresh subscription list...");
+        await fetchSubscriptions(authContext.credential, authContext.userId, {
+          forceRefresh: true,
+        });
+        logSuccess("Subscription cache refreshed.");
+        break;
+      }
+    }
+  }
+};
+
 export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
   while (true) {
     showDivider();
     logBlank();
-    const { action } = await inquirer.prompt<{ action: "activate" | "deactivate" | "presets" | "exit" }>([
+    const { action } = await inquirer.prompt<{
+      action: "activate" | "deactivate" | "favorites" | "presets" | "exit";
+    }>([
       {
         type: "select",
         name: "action",
@@ -606,6 +1105,7 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
         choices: [
           { name: chalk.green("▶ Activate Role(s)"), value: "activate" },
           { name: chalk.yellow("◼ Deactivate Role(s)"), value: "deactivate" },
+          { name: chalk.yellow("★ Favorites..."), value: "favorites" },
           { name: chalk.magenta("⚙ Presets..."), value: "presets" },
           { name: chalk.red("✕ Exit"), value: "exit" },
         ],
@@ -620,8 +1120,11 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
       case "deactivate":
         await handleDeactivation(authContext);
         break;
+      case "favorites":
+        await runFavoritesManager(authContext);
+        break;
       case "presets":
-        await runPresetsManager();
+        await runPresetsManager(authContext);
         break;
       case "exit":
         logBlank();
@@ -638,19 +1141,29 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
     logInfo("Starting role activation flow...");
     logBlank();
 
-    let subscriptions = await fetchSubscriptions(authContext.credential);
+    // Load favorites for subscription display
+    const favoritesLoaded = await loadFavorites(authContext.userId);
+    let favoritesData = favoritesLoaded.data;
+    const favoriteIds = new Set(getFavoriteIds(favoritesData).map((id) => id.toLowerCase()));
+
+    let subscriptions = await fetchSubscriptions(authContext.credential, authContext.userId);
 
     let selectedSubscription: { subscriptionId: string; displayName: string } | undefined;
 
     if (subscriptions.length === 0) {
       logWarning("No subscriptions found.");
-      const { action } = await inquirer.prompt<{ action: "enter" | "back" | "exit" }>([
+      const { action } = await inquirer.prompt<{
+        action: "enter" | "back" | "exit";
+      }>([
         {
           type: "select",
           name: "action",
           message: chalk.yellow("No subscriptions found. What would you like to do?"),
           choices: [
-            { name: chalk.cyan("Enter subscription ID manually"), value: "enter" },
+            {
+              name: chalk.cyan("Enter subscription ID manually"),
+              value: "enter",
+            },
             { name: chalk.cyan("↩ Back to Main Menu"), value: "back" },
             { name: chalk.red("✕ Exit"), value: "exit" },
           ],
@@ -676,42 +1189,45 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
             },
           },
         ]);
-        selectedSubscription = { subscriptionId: manualId.trim(), displayName: manualId.trim() };
+        selectedSubscription = {
+          subscriptionId: manualId.trim(),
+          displayName: manualId.trim(),
+        };
       }
     } else {
-      const BACK_VALUE = "__BACK__";
-      const subscriptionChoices = subscriptions
-        .map((sub) => ({
-          name: formatSubscription(sub.displayName, sub.subscriptionId),
-          value: sub.subscriptionId,
-        }))
-        .concat([{ name: chalk.dim("↩ Back to Main Menu"), value: BACK_VALUE }]);
-
       logBlank();
-      const { selectedSubscriptionId } = await inquirer.prompt<{
-        selectedSubscriptionId: string;
-      }>([
-        {
-          type: "select",
-          name: "selectedSubscriptionId",
-          message: chalk.cyan("Select a subscription:"),
-          choices: subscriptionChoices,
-          pageSize: 15,
-          default: subscriptionChoices[0]?.value,
-        },
-      ]);
+      const result = await selectSubscriptionWithSearch(subscriptions, favoriteIds);
 
-      if (selectedSubscriptionId === BACK_VALUE) {
+      if (!result) {
         logDim("Returning to main menu...");
         return;
       }
 
-      const found = subscriptions.find((sub) => sub.subscriptionId === selectedSubscriptionId);
-      if (!found) {
-        logError("Selected subscription not found.");
-        return;
+      selectedSubscription = result;
+
+      // Prompt to toggle favorite
+      const isCurrentlyFavorite = isFavorite(favoritesData, selectedSubscription.subscriptionId);
+      const { toggleFav } = await inquirer.prompt<{ toggleFav: boolean }>([
+        {
+          type: "confirm",
+          name: "toggleFav",
+          message: isCurrentlyFavorite
+            ? chalk.yellow(`☆ Remove "${selectedSubscription.displayName}" from favorites?`)
+            : chalk.yellow(`★ Add "${selectedSubscription.displayName}" to favorites?`),
+          default: false,
+        },
+      ]);
+
+      if (toggleFav) {
+        const { data: updatedData, added } = toggleFavorite(favoritesData, selectedSubscription.subscriptionId);
+        favoritesData = updatedData;
+        await saveFavorites(favoritesLoaded.filePath, favoritesData);
+        if (added) {
+          logSuccess(`Added "${selectedSubscription.displayName}" to favorites.`);
+        } else {
+          logInfo(`Removed "${selectedSubscription.displayName}" from favorites.`);
+        }
       }
-      selectedSubscription = { subscriptionId: found.subscriptionId, displayName: found.displayName };
     }
 
     const eligibleRoles = await fetchEligibleRolesForSubscription(
@@ -784,7 +1300,10 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
     showSummary("Activation Summary", [
       { label: "Subscription", value: selectedSubscription.displayName },
       { label: "Role(s)", value: selectedRoleNames },
-      { label: "Duration", value: `${activationDetails.durationHours} hour(s)` },
+      {
+        label: "Duration",
+        value: `${activationDetails.durationHours} hour(s)`,
+      },
       { label: "Justification", value: activationDetails.justification },
     ]);
 
@@ -859,18 +1378,27 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
     logInfo("Starting role deactivation flow...");
     logBlank();
 
-    let subscriptions = await fetchSubscriptions(authContext.credential);
+    // Load favorites to prioritize scanning
+    const favoritesLoaded = await loadFavorites(authContext.userId);
+    const favoriteIds = new Set(getFavoriteIds(favoritesLoaded.data).map((id) => id.toLowerCase()));
+
+    let subscriptions = await fetchSubscriptions(authContext.credential, authContext.userId);
     let activeAzureRoles: ActiveAzureRole[] = [];
 
     if (subscriptions.length === 0) {
       logWarning("No subscriptions found.");
-      const { action } = await inquirer.prompt<{ action: "enter" | "back" | "exit" }>([
+      const { action } = await inquirer.prompt<{
+        action: "enter" | "back" | "exit";
+      }>([
         {
           type: "select",
           name: "action",
           message: chalk.yellow("No subscriptions found. What would you like to do?"),
           choices: [
-            { name: chalk.cyan("Enter subscription ID manually"), value: "enter" },
+            {
+              name: chalk.cyan("Enter subscription ID manually"),
+              value: "enter",
+            },
             { name: chalk.cyan("↩ Back to Main Menu"), value: "back" },
             { name: chalk.red("✕ Exit"), value: "exit" },
           ],
@@ -896,8 +1424,25 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
             },
           },
         ]);
-        subscriptions.push({ subscriptionId: manualId.trim(), displayName: manualId.trim(), tenantId: "" } as any);
+        subscriptions.push({
+          subscriptionId: manualId.trim(),
+          displayName: manualId.trim(),
+          tenantId: "",
+        } as any);
       }
+    }
+
+    // Sort subscriptions: favorites first, then alphabetically
+    subscriptions.sort((a, b) => {
+      const aIsFav = favoriteIds.has(a.subscriptionId.toLowerCase());
+      const bIsFav = favoriteIds.has(b.subscriptionId.toLowerCase());
+      if (aIsFav !== bIsFav) return aIsFav ? -1 : 1;
+      return a.displayName.localeCompare(b.displayName);
+    });
+
+    // Scan favorites first for faster results
+    if (favoriteIds.size > 0) {
+      logDim("Scanning favorite subscriptions first...");
     }
 
     for (const sub of subscriptions) {
@@ -910,8 +1455,6 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
       await promptBackToMainMenuOrExit("What would you like to do?");
       return;
     }
-
-    const BACK_VALUE = "__BACK__";
 
     logBlank();
     const { rolesToDeactivate } = await inquirer.prompt([

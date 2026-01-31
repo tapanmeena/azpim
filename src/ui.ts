@@ -257,7 +257,7 @@ export const formatRole = (roleName: string, scopeDisplayName: string): string =
 export const formatActiveRole = (roleName: string, scopeDisplayName: string, subscriptionName: string, startDateTime: string): string => {
   const startDate = new Date(startDateTime).toLocaleString();
   return `${chalk.white.bold(roleName)} ${chalk.dim("@")} ${chalk.cyan(scopeDisplayName)} ${chalk.dim(`(${subscriptionName})`)} ${chalk.dim(
-    `[Started: ${startDate}]`
+    `[Started: ${startDate}]`,
   )}`;
 };
 
@@ -266,6 +266,27 @@ export const formatActiveRole = (roleName: string, scopeDisplayName: string, sub
  */
 export const formatSubscription = (displayName: string, subscriptionId: string): string => {
   return `${chalk.cyanBright.bold(displayName)} ${chalk.dim(`(${subscriptionId})`)}`;
+};
+
+/**
+ * Formats a favorite subscription display string with a star icon.
+ */
+export const formatFavoriteSubscription = (displayName: string, subscriptionId: string): string => {
+  return `${chalk.yellow("★")} ${chalk.cyanBright.bold(displayName)} ${chalk.dim(`(${subscriptionId})`)}`;
+};
+
+/**
+ * Formats a non-favorite subscription with spacing to align with favorites.
+ */
+export const formatNonFavoriteSubscription = (displayName: string, subscriptionId: string): string => {
+  return `  ${chalk.cyanBright.bold(displayName)} ${chalk.dim(`(${subscriptionId})`)}`;
+};
+
+/**
+ * Creates a separator label for subscription groups.
+ */
+export const createSubscriptionSeparator = (label: string): string => {
+  return chalk.dim(`── ${label} ──`);
 };
 
 /**

@@ -6,8 +6,18 @@ import { name as npmPackageName, version } from "../package.json";
 import { authenticate } from "./auth";
 import { activateOnce, deactivateOnce, showMainMenu } from "./cli";
 import {
+  addFavorite,
+  clearFavorites,
+  exportFavorites,
+  getFavoriteIds,
+  importFavorites,
+  loadFavorites,
+  removeFavorite,
+  saveFavorites,
+} from "./favorites";
+import { migrateGlobalFilesToUser } from "./paths";
+import {
   expandTemplate,
-  getDefaultPresetsFilePath,
   getPreset,
   listPresetNames,
   loadPresets,
@@ -19,6 +29,7 @@ import {
   upsertPreset,
 } from "./presets";
 import { runPresetAddWizard, runPresetEditWizard } from "./presets-cli";
+import { formatCacheAge, getCacheAge, getSubscriptionNameMap, invalidateCache, validateSubscriptionId } from "./subscription-cache";
 import { configureUi, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showHeader } from "./ui";
 import { checkForUpdate } from "./update-check";
 
@@ -143,12 +154,15 @@ program
       // Authenticate (required for both interactive and one-shot flows)
       const authContext = await authenticate();
 
+      // Migrate global config files to user-specific location
+      await migrateGlobalFilesToUser(authContext.userId);
+
       if (!wantsOneShot) {
         await showMainMenu(authContext);
         return;
       }
 
-      const presets = await loadPresets();
+      const presets = await loadPresets(authContext.userId);
       const hasRoleNamesFromCli = getOptionValueSource(command, "roleName") === "cli";
       const hasSubscriptionFromCli = getOptionValueSource(command, "subscriptionId") === "cli";
 
@@ -268,12 +282,15 @@ program
       // Authenticate (required for both interactive and one-shot flows)
       const authContext = await authenticate();
 
+      // Migrate global config files to user-specific location
+      await migrateGlobalFilesToUser(authContext.userId);
+
       if (!wantsOneShot) {
         await showMainMenu(authContext);
         return;
       }
 
-      const presets = await loadPresets();
+      const presets = await loadPresets(authContext.userId);
       const hasRoleNamesFromCli = getOptionValueSource(command, "roleName") === "cli";
 
       const defaultPresetName = presets.data.defaults?.deactivatePreset;
@@ -435,10 +452,7 @@ program
 const presetCommand = program
   .command("preset")
   .description("Manage azpim presets")
-  .addHelpText(
-    "after",
-    `\nPresets file location:\n  ${getDefaultPresetsFilePath()}\n\nYou can override via environment variable AZPIM_PRESETS_PATH.\n`,
-  );
+  .addHelpText("after", `\nPresets are stored per-user after authentication.\nYou can override via environment variable AZPIM_PRESETS_PATH.\n`);
 
 presetCommand
   .command("list")
@@ -453,7 +467,10 @@ presetCommand
 
       showHeader();
 
-      const loaded = await loadPresets();
+      const authContext = await authenticate();
+      await migrateGlobalFilesToUser(authContext.userId);
+
+      const loaded = await loadPresets(authContext.userId);
       const names = listPresetNames(loaded.data);
 
       if (output === "json") {
@@ -520,7 +537,10 @@ presetCommand
 
       showHeader();
 
-      const loaded = await loadPresets();
+      const authContext = await authenticate();
+      await migrateGlobalFilesToUser(authContext.userId);
+
+      const loaded = await loadPresets(authContext.userId);
       const entry = getPreset(loaded.data, name);
       if (!entry) {
         const names = listPresetNames(loaded.data);
@@ -584,7 +604,10 @@ presetCommand
 
       showHeader();
 
-      const loaded = await loadPresets();
+      const authContext = await authenticate();
+      await migrateGlobalFilesToUser(authContext.userId);
+
+      const loaded = await loadPresets(authContext.userId);
       const existingNames = listPresetNames(loaded.data);
 
       if (name && getPreset(loaded.data, name)) {
@@ -615,7 +638,9 @@ presetCommand
       });
 
       if (!cmd.yes) {
-        const { confirmSave } = await inquirer.prompt<{ confirmSave: boolean }>([
+        const { confirmSave } = await inquirer.prompt<{
+          confirmSave: boolean;
+        }>([
           {
             type: "confirm",
             name: "confirmSave",
@@ -677,7 +702,10 @@ presetCommand
 
       showHeader();
 
-      const loaded = await loadPresets();
+      const authContext = await authenticate();
+      await migrateGlobalFilesToUser(authContext.userId);
+
+      const loaded = await loadPresets(authContext.userId);
       const existing = getPreset(loaded.data, name);
       if (!existing) {
         throw new Error(`Preset not found: "${name}"`);
@@ -752,14 +780,19 @@ presetCommand
 
       showHeader();
 
-      const loaded = await loadPresets();
+      const authContext = await authenticate();
+      await migrateGlobalFilesToUser(authContext.userId);
+
+      const loaded = await loadPresets(authContext.userId);
       const entry = getPreset(loaded.data, name);
       if (!entry) {
         throw new Error(`Preset not found: "${name}"`);
       }
 
       if (!cmd.yes) {
-        const { confirmRemove } = await inquirer.prompt<{ confirmRemove: boolean }>([
+        const { confirmRemove } = await inquirer.prompt<{
+          confirmRemove: boolean;
+        }>([
           {
             type: "confirm",
             name: "confirmRemove",
@@ -784,6 +817,414 @@ presetCommand
       }
 
       logSuccess(`Preset removed: ${name}`);
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+// ===============================
+// Favorites Command
+// ===============================
+
+type FavoritesCommandOptions = {
+  output?: OutputFormat;
+  quiet?: boolean;
+  force?: boolean;
+  merge?: boolean;
+};
+
+const favoritesCommand = program.command("favorites").description("Manage favorite subscriptions").alias("fav");
+
+favoritesCommand
+  .command("list")
+  .description("List all favorite subscriptions")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (cmd: FavoritesCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+
+      const authContext = await authenticate();
+      const userId = authContext.userId;
+      await migrateGlobalFilesToUser(userId);
+
+      const loaded = await loadFavorites(userId);
+      const favoriteIds = getFavoriteIds(loaded.data);
+      const subscriptionNames = await getSubscriptionNameMap(userId);
+      const cacheAge = await getCacheAge(userId);
+
+      if (output === "json") {
+        const favorites = favoriteIds.map((id) => ({
+          subscriptionId: id,
+          displayName: subscriptionNames.get(id) || null,
+        }));
+        process.stdout.write(`${JSON.stringify({ ok: true, filePath: loaded.filePath, cacheAge: cacheAge, favorites }, null, 2)}\n`);
+        return;
+      }
+
+      logInfo(`Favorites: ${favoriteIds.length} subscription(s)`);
+      logDim(`File: ${loaded.filePath}`);
+      logDim(`Cache: ${formatCacheAge(cacheAge)}`);
+      logBlank();
+
+      if (favoriteIds.length === 0) {
+        logWarning("No favorites configured yet.");
+        logDim("Add favorites with: azpim favorites add <subscriptionId>");
+      } else {
+        for (const id of favoriteIds) {
+          const name = subscriptionNames.get(id) || "(name not cached)";
+          console.log(`  ★ ${name} (${id})`);
+        }
+      }
+      logBlank();
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+favoritesCommand
+  .command("add")
+  .description("Add a subscription to favorites")
+  .argument("<subscriptionId>", "Subscription ID to add")
+  .option("--force", "Add even if subscription is not found in cache")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (subscriptionId: string, cmd: FavoritesCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+
+      const authContext = await authenticate();
+      const userId = authContext.userId;
+      await migrateGlobalFilesToUser(userId);
+
+      const loaded = await loadFavorites(userId);
+      const normalizedId = subscriptionId.trim().toLowerCase();
+
+      // Check if already a favorite
+      const existingIds = getFavoriteIds(loaded.data);
+      if (existingIds.includes(normalizedId)) {
+        if (output === "json") {
+          process.stdout.write(`${JSON.stringify({ ok: true, alreadyExists: true, subscriptionId: normalizedId }, null, 2)}\n`);
+          return;
+        }
+        logInfo("This subscription is already a favorite.");
+        return;
+      }
+
+      // Validate against cache
+      const validation = await validateSubscriptionId(userId, normalizedId);
+      if (!validation.valid && !cmd.force) {
+        throw new Error(
+          `Subscription "${normalizedId}" not found in cache. Use --force to add anyway, or run 'azpim favorites refresh' to update cache.`,
+        );
+      }
+
+      const updatedData = addFavorite(loaded.data, normalizedId);
+      await saveFavorites(loaded.filePath, updatedData);
+
+      const displayName = validation.subscription?.displayName || normalizedId;
+
+      if (output === "json") {
+        process.stdout.write(
+          `${JSON.stringify({ ok: true, added: true, subscriptionId: normalizedId, displayName, validated: validation.valid }, null, 2)}\n`,
+        );
+        return;
+      }
+
+      if (validation.valid) {
+        logSuccess(`Added "${displayName}" to favorites.`);
+      } else {
+        logWarning(`Added unvalidated subscription ID "${normalizedId}" to favorites.`);
+      }
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+favoritesCommand
+  .command("remove")
+  .description("Remove a subscription from favorites")
+  .argument("<subscriptionId>", "Subscription ID to remove")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (subscriptionId: string, cmd: FavoritesCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+
+      const authContext = await authenticate();
+      const userId = authContext.userId;
+      await migrateGlobalFilesToUser(userId);
+
+      const loaded = await loadFavorites(userId);
+      const normalizedId = subscriptionId.trim().toLowerCase();
+
+      // Check if it's a favorite
+      const existingIds = getFavoriteIds(loaded.data);
+      if (!existingIds.includes(normalizedId)) {
+        if (output === "json") {
+          process.stdout.write(`${JSON.stringify({ ok: true, notFound: true, subscriptionId: normalizedId }, null, 2)}\n`);
+          return;
+        }
+        logWarning("This subscription is not in favorites.");
+        return;
+      }
+
+      const updatedData = removeFavorite(loaded.data, normalizedId);
+      await saveFavorites(loaded.filePath, updatedData);
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: true, removed: true, subscriptionId: normalizedId }, null, 2)}\n`);
+        return;
+      }
+
+      logSuccess(`Removed "${normalizedId}" from favorites.`);
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+favoritesCommand
+  .command("clear")
+  .description("Clear all favorites")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (cmd: FavoritesCommandOptions & { yes?: boolean }) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+
+      const authContext = await authenticate();
+      const userId = authContext.userId;
+      await migrateGlobalFilesToUser(userId);
+
+      const loaded = await loadFavorites(userId);
+      const favoriteIds = getFavoriteIds(loaded.data);
+
+      if (favoriteIds.length === 0) {
+        if (output === "json") {
+          process.stdout.write(`${JSON.stringify({ ok: true, cleared: 0 }, null, 2)}\n`);
+          return;
+        }
+        logWarning("No favorites to clear.");
+        return;
+      }
+
+      if (!cmd.yes && output !== "json") {
+        const { confirmClear } = await inquirer.prompt<{
+          confirmClear: boolean;
+        }>([
+          {
+            type: "confirm",
+            name: "confirmClear",
+            message: `Clear all ${favoriteIds.length} favorite(s)?`,
+            default: false,
+          },
+        ]);
+        if (!confirmClear) {
+          throw new Error("Aborted.");
+        }
+      }
+
+      const updatedData = clearFavorites(loaded.data);
+      await saveFavorites(loaded.filePath, updatedData);
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: true, cleared: favoriteIds.length }, null, 2)}\n`);
+        return;
+      }
+
+      logSuccess(`Cleared ${favoriteIds.length} favorite(s).`);
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+favoritesCommand
+  .command("export")
+  .description("Export favorites to a file")
+  .argument("<filePath>", "Path to export file")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (filePath: string, cmd: FavoritesCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+
+      const authContext = await authenticate();
+      const userId = authContext.userId;
+      await migrateGlobalFilesToUser(userId);
+
+      const loaded = await loadFavorites(userId);
+      const favoriteIds = getFavoriteIds(loaded.data);
+
+      if (favoriteIds.length === 0) {
+        throw new Error("No favorites to export.");
+      }
+
+      const subscriptionNames = await getSubscriptionNameMap(userId);
+      await exportFavorites(loaded.data, filePath.trim(), subscriptionNames);
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: true, exported: favoriteIds.length, filePath: filePath.trim() }, null, 2)}\n`);
+        return;
+      }
+
+      logSuccess(`Exported ${favoriteIds.length} favorite(s) to ${filePath.trim()}`);
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+favoritesCommand
+  .command("import")
+  .description("Import favorites from a file")
+  .argument("<filePath>", "Path to import file")
+  .option("--merge", "Merge with existing favorites (default: replace)")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (filePath: string, cmd: FavoritesCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+
+      const authContext = await authenticate();
+      const userId = authContext.userId;
+      await migrateGlobalFilesToUser(userId);
+
+      const loaded = await loadFavorites(userId);
+      const merge = cmd.merge ?? false;
+
+      const { data: importedData, result } = await importFavorites(loaded.data, filePath.trim(), merge);
+      await saveFavorites(loaded.filePath, importedData);
+
+      if (output === "json") {
+        process.stdout.write(
+          `${JSON.stringify({ ok: true, imported: result.imported, skipped: result.skipped, total: result.total, merge }, null, 2)}\n`,
+        );
+        return;
+      }
+
+      logSuccess(`Imported ${result.imported} new favorite(s), ${result.skipped} already existed.`);
+    } catch (error: any) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const output = (cmd.output ?? "text") as OutputFormat;
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
+        process.exit(1);
+      }
+      logBlank();
+      logError(`An error occurred: ${errorMessage}`);
+      logBlank();
+      process.exit(1);
+    }
+  });
+
+favoritesCommand
+  .command("refresh")
+  .description("Refresh the subscription cache")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(async (cmd: FavoritesCommandOptions) => {
+    try {
+      const output = (cmd.output ?? "text") as OutputFormat;
+      const quiet = Boolean(cmd.quiet || output === "json");
+      configureUi({ quiet });
+
+      showHeader();
+
+      // Authenticate to fetch subscriptions
+      const authContext = await authenticate();
+      const userId = authContext.userId;
+
+      logInfo("Invalidating subscription cache...");
+      await invalidateCache(userId);
+
+      logInfo("Fetching fresh subscription list...");
+      const azurePim = await import("./azure-pim.js");
+      const subscriptions = await azurePim.fetchSubscriptions(authContext.credential, userId, { forceRefresh: true });
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify({ ok: true, subscriptionCount: subscriptions.length }, null, 2)}\n`);
+        return;
+      }
+
+      logSuccess(`Subscription cache refreshed. Found ${subscriptions.length} subscription(s).`);
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const output = (cmd.output ?? "text") as OutputFormat;

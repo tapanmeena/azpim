@@ -1,6 +1,6 @@
 {
   "name": "azpim",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Terminal app to manage Azure PIM role activations",
   "main": "dist/index.js",
   "bin": {
@@ -31,11 +31,12 @@
   },
   "homepage": "https://github.com/tapanmeena/azpim#readme",
   "license": "ISC",
-  "packageManager": "pnpm@10.28.0",
+  "packageManager": "pnpm@10.28.2",
   "dependencies": {
     "@azure/arm-authorization": "^9.0.0",
     "@azure/arm-resources-subscriptions": "^2.1.0",
     "@azure/identity": "^4.13.0",
+    "@inquirer/search": "^4.1.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "chalk": "^5.6.2",
     "commander": "^14.0.2",
