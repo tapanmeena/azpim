@@ -4,10 +4,12 @@ import { version } from "../package.json";
 
 type UiOptions = {
   quiet: boolean;
+  debug: boolean;
 };
 
 let uiOptions: UiOptions = {
   quiet: false,
+  debug: false,
 };
 
 export const configureUi = (options: Partial<UiOptions>): void => {
@@ -15,6 +17,8 @@ export const configureUi = (options: Partial<UiOptions>): void => {
 };
 
 export const isQuietMode = (): boolean => uiOptions.quiet;
+
+export const isDebugMode = (): boolean => uiOptions.debug;
 
 // ===============================
 // Spinner Management
@@ -179,6 +183,19 @@ export const logWarning = (message: string): void => {
 export const logDim = (message: string): void => {
   if (isQuietMode()) return;
   console.log(chalk.dim(message));
+};
+
+/**
+ * Outputs debug logging message (only when debug mode is enabled).
+ * Debug mode overrides quiet mode.
+ */
+export const logDebug = (message: string, data?: unknown): void => {
+  if (!isDebugMode()) return;
+  const prefix = chalk.magenta("[DEBUG]");
+  console.log(prefix, chalk.dim(message));
+  if (data !== undefined) {
+    console.log(chalk.dim(JSON.stringify(data, null, 2)));
+  }
 };
 
 /**

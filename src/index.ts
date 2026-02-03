@@ -109,7 +109,11 @@ const resolveValue = <T>(command: Command, optionName: string, cliValue: T, pres
 
 const program = new Command();
 
-program.name("azpim").description("Azure PIM CLI - A CLI tool for Azure Privilege Identity Management (PIM)").version(version);
+program
+  .name("azpim")
+  .description("Azure PIM CLI - A CLI tool for Azure Privilege Identity Management (PIM)")
+  .version(version)
+  .option("--debug", "Enable debug logging");
 
 program
   .command("activate", { isDefault: true })
@@ -139,7 +143,8 @@ program
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       // Show header (text mode only)
       showHeader();
@@ -267,7 +272,8 @@ program
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       // Show header (text mode only)
       showHeader();
@@ -375,7 +381,8 @@ program
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -463,7 +470,8 @@ presetCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -533,7 +541,8 @@ presetCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -600,7 +609,8 @@ presetCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -698,7 +708,8 @@ presetCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -776,7 +787,8 @@ presetCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -853,7 +865,8 @@ favoritesCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -915,7 +928,8 @@ favoritesCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -986,7 +1000,8 @@ favoritesCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -1041,7 +1056,8 @@ favoritesCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -1110,7 +1126,8 @@ favoritesCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -1159,7 +1176,8 @@ favoritesCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
@@ -1204,7 +1222,8 @@ favoritesCommand
     try {
       const output = (cmd.output ?? "text") as OutputFormat;
       const quiet = Boolean(cmd.quiet || output === "json");
-      configureUi({ quiet });
+      const debug = Boolean(program.opts().debug);
+      configureUi({ quiet, debug });
 
       showHeader();
 
