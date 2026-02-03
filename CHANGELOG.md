@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.3.0](https://github.com/tapanmeena/azpim/compare/v1.4.0...v1.3.0) (2026-02-03)
+
+
+### Features
+
+* add debug logging functionality and enhance error handling across modules ([05bb2c2](https://github.com/tapanmeena/azpim/commit/05bb2c22440b60e524581dde751a0a26f51e2c7b))
+* add subscription reader support for role activation and deactiv… ([#4](https://github.com/tapanmeena/azpim/issues/4)) ([9e3b231](https://github.com/tapanmeena/azpim/commit/9e3b231f4e6d7be868177d0d98301f81dbddf220))
+* enhance subscription selection and favorite management in deactivation flow ([c77fa01](https://github.com/tapanmeena/azpim/commit/c77fa010057b4143ccaa825a2d47d37ccf48098e))
+
+
+### Bug Fixes
+
+* normalize presets data structure in loadPresets function ([b283bbc](https://github.com/tapanmeena/azpim/commit/b283bbc8a013bac1dec81906b312184384f7a7d6))
+* revert version number to 1.0.0 in package.json ([e1a2692](https://github.com/tapanmeena/azpim/commit/e1a26925e2fc14e7de04c5934d2c5fb307410d83))
+
 ## [1.2.0](https://github.com/tapanmeena/azpim/compare/v1.4.0...v1.2.0) (2026-01-31)
 
 
