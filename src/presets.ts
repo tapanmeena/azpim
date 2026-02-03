@@ -182,7 +182,7 @@ export const loadPresets = async (userId: string): Promise<LoadedPresets> => {
       hasDefaultActivate: Boolean(normalized.defaults?.activatePreset),
       hasDefaultDeactivate: Boolean(normalized.defaults?.deactivatePreset),
     });
-    return { filePath, data: normalizePresetsFile(json), exists: true };
+    return { filePath, data: normalized, exists: true };
   } catch (error: any) {
     if (error?.code === "ENOENT") {
       logDebug("Presets file does not exist, returning empty presets", { filePath });

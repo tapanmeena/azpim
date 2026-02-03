@@ -185,7 +185,8 @@ export const logDim = (message: string): void => {
   console.log(chalk.dim(message));
 };
 
-/** * Outputs debug logging message (only when debug mode is enabled).
+/**
+ * Outputs debug logging message (only when debug mode is enabled).
  * Debug mode overrides quiet mode.
  */
 export const logDebug = (message: string, data?: unknown): void => {
