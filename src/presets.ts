@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ENV_PRESETS_PATH, getUserDataPath } from "./paths";
+import { logDebug } from "./ui";
 
 export type PresetCommandName = "activate" | "deactivate";
 
@@ -57,9 +58,15 @@ export type TemplateContext = {
 export const getPresetsFilePath = (userId: string): string => {
   const envOverride = process.env[ENV_PRESETS_PATH];
   if (envOverride && envOverride.trim()) {
+    logDebug("Using presets file path override from environment variable", {
+      path: envOverride.trim(),
+      env: ENV_PRESETS_PATH,
+    });
     return envOverride.trim();
   }
-  return getUserDataPath(userId, "presets.json");
+  const defaultPath = getUserDataPath(userId, "presets.json");
+  logDebug("Using default presets file path", { path: defaultPath });
+  return defaultPath;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> => {
@@ -163,15 +170,26 @@ export const normalizePresetsFile = (value: unknown): PresetsFile => {
  */
 export const loadPresets = async (userId: string): Promise<LoadedPresets> => {
   const filePath = getPresetsFilePath(userId);
+  logDebug("Loading presets file", { filePath });
   try {
     const raw = await readFile(filePath, "utf8");
     const json = JSON.parse(raw) as unknown;
+    const normalized = normalizePresetsFile(json);
+    const presetCount = Object.keys(normalized.presets ?? {}).length;
+    logDebug("Presets file loaded successfully", {
+      filePath,
+      presetCount,
+      hasDefaultActivate: Boolean(normalized.defaults?.activatePreset),
+      hasDefaultDeactivate: Boolean(normalized.defaults?.deactivatePreset),
+    });
     return { filePath, data: normalizePresetsFile(json), exists: true };
   } catch (error: any) {
     if (error?.code === "ENOENT") {
+      logDebug("Presets file does not exist, returning empty presets", { filePath });
       return { filePath, data: { version: 1, presets: {} }, exists: false };
     }
     if (error instanceof SyntaxError) {
+      logDebug("Presets file contains invalid JSON", { filePath, error: error.message });
       throw new Error(`Invalid presets file JSON at ${filePath}`);
     }
     throw error;
@@ -179,10 +197,12 @@ export const loadPresets = async (userId: string): Promise<LoadedPresets> => {
 };
 
 export const savePresets = async (filePath: string, data: PresetsFile): Promise<void> => {
+  logDebug("Saving presets file", { filePath, presetCount: Object.keys(data.presets ?? {}).length });
   const dir = path.dirname(filePath);
   await mkdir(dir, { recursive: true });
   const payload = JSON.stringify(data, null, 2);
   await writeFile(filePath, `${payload}\n`, "utf8");
+  logDebug("Presets file saved successfully", { filePath });
 };
 
 export const listPresetNames = (data: PresetsFile): string[] => {
@@ -221,26 +241,40 @@ export const setDefaultPresetName = (data: PresetsFile, command: PresetCommandNa
 };
 
 export const resolveActivatePresetOptions = (data: PresetsFile, presetName?: string): ActivatePresetOptions => {
+  logDebug("Resolving activate preset options", {
+    presetName,
+    hasDefaultActivate: Boolean(data.defaults?.activatePreset),
+    hasPreset: presetName ? Boolean(data.presets?.[presetName]) : false,
+  });
   const base = data.defaults?.activate ?? {};
   const fromPreset = presetName ? (data.presets?.[presetName]?.activate ?? {}) : {};
-  return {
+  const resolved = {
     subscriptionId: fromPreset.subscriptionId ?? base.subscriptionId,
     roleNames: fromPreset.roleNames ?? base.roleNames,
     durationHours: fromPreset.durationHours ?? base.durationHours,
     justification: fromPreset.justification ?? base.justification,
     allowMultiple: fromPreset.allowMultiple ?? base.allowMultiple,
   };
+  logDebug("Resolved activate preset options", { resolved });
+  return resolved;
 };
 
 export const resolveDeactivatePresetOptions = (data: PresetsFile, presetName?: string): DeactivatePresetOptions => {
+  logDebug("Resolving deactivate preset options", {
+    presetName,
+    hasDefaultDeactivate: Boolean(data.defaults?.deactivatePreset),
+    hasPreset: presetName ? Boolean(data.presets?.[presetName]) : false,
+  });
   const base = data.defaults?.deactivate ?? {};
   const fromPreset = presetName ? (data.presets?.[presetName]?.deactivate ?? {}) : {};
-  return {
+  const resolved = {
     subscriptionId: fromPreset.subscriptionId ?? base.subscriptionId,
     roleNames: fromPreset.roleNames ?? base.roleNames,
     justification: fromPreset.justification ?? base.justification,
     allowMultiple: fromPreset.allowMultiple ?? base.allowMultiple,
   };
+  logDebug("Resolved deactivate preset options", { resolved });
+  return resolved;
 };
 
 export const expandTemplate = (template: string, context: TemplateContext = {}): string => {

@@ -31,6 +31,7 @@ import {
   formatRole,
   formatSubscription,
   logBlank,
+  logDebug,
   logDim,
   logError,
   logInfo,
@@ -319,10 +320,18 @@ export const activateOnce = async (authContext: AuthContext, options: ActivateOn
     eligibleByName.set(key, list);
   }
 
+  logDebug("Matching requested role names", {
+    requestedRoleNames,
+    eligibleCount: eligibleRoles.length,
+    uniqueRoleNames: Array.from(eligibleByName.keys()),
+  });
+
   const resolvedTargets: ActivateOnceResult["resolvedTargets"] = [];
 
   for (const name of requestedRoleNames) {
     const matches = eligibleByName.get(normalizeRoleName(name)) ?? [];
+
+    logDebug(`Role name "${name}" matched ${matches.length} eligible role(s)`);
 
     if (matches.length === 0) {
       throw new Error(`No eligible roles found matching --role-name="${name}" in subscription "${selectedSubscription.displayName}"`);
@@ -533,6 +542,9 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
     displayName: string;
   }>;
   if (options.subscriptionId?.trim()) {
+    logDebug("Using subscription ID from options", {
+      subscriptionId: options.subscriptionId,
+    });
     // Allow users without Reader permissions to deactivate roles via PIM
     // as long as they have active roles in the subscription.
     targetSubscriptions = [
@@ -542,12 +554,17 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
       },
     ];
   } else {
+    logDebug("Fetching all subscriptions for deactivation...");
     const subscriptions = await fetchSubscriptions(authContext.credential, authContext.userId);
     if (subscriptions.length === 0) {
       throw new Error("No subscriptions found. use --subscription-id to specify a subscription.");
     }
     targetSubscriptions = subscriptions;
   }
+
+  logDebug("Target subscriptions resolved for deactivation", {
+    count: targetSubscriptions.length,
+  });
 
   let allActiveRoles: ActiveAzureRole[] = [];
   for (const sub of targetSubscriptions) {
@@ -567,10 +584,18 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
     activeByName.set(key, list);
   }
 
+  logDebug("Matching requested role names for deactivation", {
+    requestedRoleNames,
+    activeCount: allActiveRoles.length,
+    uniqueRoleNames: Array.from(activeByName.keys()),
+  });
+
   const resolvedTargets: DeactivateOnceResult["resolvedTargets"] = [];
 
   for (const name of requestedRoleNames) {
     const matches = activeByName.get(normalizeRoleName(name)) ?? [];
+
+    logDebug(`Role name "${name}" matched ${matches.length} active role(s)`);
 
     if (matches.length === 0) {
       throw new Error(`No active roles found matching --role-name="${name}"`);

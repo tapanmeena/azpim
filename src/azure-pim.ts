@@ -3,7 +3,19 @@ import { SubscriptionClient } from "@azure/arm-resources-subscriptions";
 import { AzureCliCredential } from "@azure/identity";
 import { v4 as uuidv4 } from "uuid";
 import { loadCachedSubscriptions, saveCachedSubscriptions } from "./subscription-cache";
-import { failSpinner, formatStatus, logBlank, logDim, logError, logSuccess, logWarning, startSpinner, succeedSpinner, warnSpinner } from "./ui";
+import {
+  failSpinner,
+  formatStatus,
+  logBlank,
+  logDebug,
+  logDim,
+  logError,
+  logSuccess,
+  logWarning,
+  startSpinner,
+  succeedSpinner,
+  warnSpinner,
+} from "./ui";
 
 export interface AzureSubscription {
   subscriptionId: string;
@@ -59,16 +71,24 @@ export const fetchSubscriptions = async (
 
   // Try to use cached subscriptions if not forcing refresh
   if (!forceRefresh) {
+    logDebug("Checking subscription cache...");
     const cache = await loadCachedSubscriptions(userId);
     if (cache.isFresh && cache.data && cache.data.subscriptions.length > 0) {
+      logDebug("Using cached subscriptions", {
+        count: cache.data.subscriptions.length,
+      });
       startSpinner("Using cached subscriptions...");
       succeedSpinner(`Found ${cache.data.subscriptions.length} subscription(s) (cached)`);
       return cache.data.subscriptions;
     }
+    logDebug("Cache miss or stale, fetching from Azure");
+  } else {
+    logDebug("Force refresh enabled, skipping cache");
   }
 
   startSpinner("Fetching Azure subscriptions...");
 
+  logDebug("Creating SubscriptionClient...");
   const subscriptionClient = new SubscriptionClient(credential);
   const subscriptions: AzureSubscription[] = [];
 
@@ -81,6 +101,7 @@ export const fetchSubscriptions = async (
   }
 
   // Save to cache
+  logDebug("Saving subscriptions to cache", { count: subscriptions.length });
   await saveCachedSubscriptions(userId, subscriptions);
 
   succeedSpinner(`Found ${subscriptions.length} subscription(s)`);
@@ -95,11 +116,16 @@ export const fetchEligibleRolesForSubscription = async (
 ): Promise<EligibleAzureRole[]> => {
   startSpinner(`Fetching eligible roles for "${subscriptionName}"...`);
 
+  logDebug("Creating AuthorizationManagementClient...", { subscriptionId });
   const client = new AuthorizationManagementClient(credential, subscriptionId);
   const scope = `/subscriptions/${subscriptionId}`;
   const eligibleRoles: EligibleAzureRole[] = [];
 
   try {
+    logDebug("Querying eligible role schedules", {
+      scope,
+      filter: "asTarget()",
+    });
     const schedules = client.roleEligibilitySchedules.listForScope(scope, {
       filter: `asTarget()`,
     });
@@ -119,9 +145,20 @@ export const fetchEligibleRolesForSubscription = async (
       }
     }
 
+    logDebug("Eligible roles fetched", {
+      count: eligibleRoles.length,
+      subscriptionName,
+    });
     succeedSpinner(`Found ${eligibleRoles.length} eligible role(s) for "${subscriptionName}"`);
     return eligibleRoles;
   } catch (error: any) {
+    logDebug("Error fetching eligible roles", {
+      subscriptionName,
+      errorType: error?.constructor?.name,
+      statusCode: error?.statusCode,
+      code: error?.code,
+      message: error?.message,
+    });
     if (error.statusCode === 403 || error.code === "AuthorizationFailed") {
       warnSpinner(`Insufficient permissions for subscription "${subscriptionName}"`);
       return [];
@@ -139,11 +176,13 @@ export const listActiveAzureRoles = async (
 ): Promise<ActiveAzureRole[]> => {
   startSpinner(`Fetching active roles for "${subscriptionName}"...`);
 
+  logDebug("Creating AuthorizationManagementClient...", { subscriptionId });
   const client = new AuthorizationManagementClient(credential, subscriptionId);
   const scope = `/subscriptions/${subscriptionId}`;
   const activeRoles: ActiveAzureRole[] = [];
 
   try {
+    logDebug("Querying active role schedules", { scope, filter: "asTarget()" });
     const schedules = client.roleAssignmentSchedules.listForScope(scope, {
       filter: `asTarget()`,
     });
@@ -166,9 +205,20 @@ export const listActiveAzureRoles = async (
       }
     }
 
+    logDebug("Active roles fetched", {
+      count: activeRoles.length,
+      subscriptionName,
+    });
     succeedSpinner(`Found ${activeRoles.length} active role(s) for "${subscriptionName}"`);
     return activeRoles;
   } catch (error: any) {
+    logDebug("Error fetching active roles", {
+      subscriptionName,
+      errorType: error?.constructor?.name,
+      statusCode: error?.statusCode,
+      code: error?.code,
+      message: error?.message,
+    });
     if (error.statusCode === 403 || error.code === "AuthorizationFailed") {
       warnSpinner(`Insufficient permissions for subscription "${subscriptionName}"`);
       return [];
@@ -183,6 +233,9 @@ export const activateAzureRole = async (
   request: AzureActivationRequest,
   subscriptionId: string,
 ): Promise<{ status?: string }> => {
+  logDebug("Creating AuthorizationManagementClient for activation...", {
+    subscriptionId,
+  });
   const client = new AuthorizationManagementClient(credential, subscriptionId);
   const requestName = uuidv4();
   const now = new Date();
@@ -207,10 +260,24 @@ export const activateAzureRole = async (
     justification: request.justification,
   };
 
+  logDebug("Submitting activation request", {
+    scope: request.scope,
+    roleName: request.roleName,
+    requestName,
+    durationISO,
+    requestType: "SelfActivate",
+  });
+
   startSpinner(`Activating role "${request.roleName}"...`);
 
   try {
     const response = await client.roleAssignmentScheduleRequests.create(request.scope, requestName, requestBody);
+
+    logDebug("Activation response received", {
+      status: response.status,
+      id: response.id,
+      roleName: request.roleName,
+    });
 
     succeedSpinner(`Activation request submitted for "${request.roleName}"`);
     logBlank();
@@ -229,7 +296,26 @@ export const activateAzureRole = async (
 
     return { status: response.status };
   } catch (error) {
+    logDebug("Activation error", {
+      roleName: request.roleName,
+      errorType: (error as any)?.constructor?.name,
+      statusCode: (error as any)?.statusCode,
+      code: (error as any)?.code,
+      message: (error as Error)?.message,
+    });
     failSpinner(`Failed to activate role "${request.roleName}"`);
+
+    // Provide helpful guidance for specific error codes
+    const errorCode = (error as any)?.code;
+    const errorMessage = (error as Error)?.message || "";
+
+    if (errorCode === "RoleAssignmentRequestPolicyValidationFailed" && errorMessage.includes("ExpirationRule")) {
+      logBlank();
+      logError(`The requested duration of ${request.durationHours} hour(s) exceeds the maximum allowed by the PIM policy for this role.`);
+      logDim(`   Try activating with a shorter duration (e.g., --duration 4 or --duration 1)`);
+      logDim(`   or check the role's PIM settings in the Azure portal to see the maximum allowed duration.`);
+    }
+
     throw error;
   }
 };
@@ -243,9 +329,19 @@ export const deactivateAzureRole = async (
   roleDefinitionId: string,
   roleName?: string,
 ): Promise<void> => {
+  logDebug("Creating AuthorizationManagementClient for deactivation...", {
+    subscriptionId,
+  });
   const client = new AuthorizationManagementClient(credential, subscriptionId);
   const requestName = uuidv4();
   const displayName = roleName || "role";
+
+  logDebug("Submitting deactivation request", {
+    scope,
+    roleName: displayName,
+    requestName,
+    requestType: "SelfDeactivate",
+  });
 
   startSpinner(`Deactivating "${displayName}"...`);
 
@@ -257,8 +353,16 @@ export const deactivateAzureRole = async (
       linkedRoleEligibilityScheduleId: roleEligibilityScheduleId,
     });
 
+    logDebug("Deactivation successful", { roleName: displayName });
     succeedSpinner(`Successfully deactivated "${displayName}"`);
   } catch (error) {
+    logDebug("Deactivation error", {
+      roleName: displayName,
+      errorType: (error as any)?.constructor?.name,
+      statusCode: (error as any)?.statusCode,
+      code: (error as any)?.code,
+      message: (error as Error)?.message,
+    });
     failSpinner(`Failed to deactivate "${displayName}"`);
     throw error;
   }
