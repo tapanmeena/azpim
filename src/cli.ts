@@ -1403,12 +1403,14 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
     logInfo("Starting role deactivation flow...");
     logBlank();
 
-    // Load favorites to prioritize scanning
+    // Load favorites for subscription display
     const favoritesLoaded = await loadFavorites(authContext.userId);
-    const favoriteIds = new Set(getFavoriteIds(favoritesLoaded.data).map((id) => id.toLowerCase()));
+    let favoritesData = favoritesLoaded.data;
+    const favoriteIds = new Set(getFavoriteIds(favoritesData).map((id) => id.toLowerCase()));
 
     let subscriptions = await fetchSubscriptions(authContext.credential, authContext.userId);
-    let activeAzureRoles: ActiveAzureRole[] = [];
+
+    let selectedSubscription: { subscriptionId: string; displayName: string } | undefined;
 
     if (subscriptions.length === 0) {
       logWarning("No subscriptions found.");
@@ -1442,38 +1444,61 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
           {
             type: "input",
             name: "manualId",
-            message: chalk.cyan("Subscription ID to inspect (for active roles):"),
+            message: chalk.cyan("Subscription ID:"),
             validate: (value) => {
               if (!value || !value.trim()) return chalk.red("Please enter a subscription ID.");
               return true;
             },
           },
         ]);
-        subscriptions.push({
+        selectedSubscription = {
           subscriptionId: manualId.trim(),
           displayName: manualId.trim(),
-          tenantId: "",
-        } as any);
+        };
+      }
+    } else {
+      logBlank();
+      const result = await selectSubscriptionWithSearch(subscriptions, favoriteIds);
+
+      if (!result) {
+        logDim("Returning to main menu...");
+        return;
+      }
+
+      selectedSubscription = result;
+
+      // Prompt to toggle favorite
+      const isCurrentlyFavorite = isFavorite(favoritesData, selectedSubscription.subscriptionId);
+      const { toggleFav } = await inquirer.prompt<{ toggleFav: boolean }>([
+        {
+          type: "confirm",
+          name: "toggleFav",
+          message: isCurrentlyFavorite
+            ? chalk.yellow(`☆ Remove "${selectedSubscription.displayName}" from favorites?`)
+            : chalk.yellow(`★ Add "${selectedSubscription.displayName}" to favorites?`),
+          default: false,
+        },
+      ]);
+
+      if (toggleFav) {
+        const { data: updatedData, added } = toggleFavorite(favoritesData, selectedSubscription.subscriptionId);
+        favoritesData = updatedData;
+        await saveFavorites(favoritesLoaded.filePath, favoritesData);
+        if (added) {
+          logSuccess(`Added "${selectedSubscription.displayName}" to favorites.`);
+        } else {
+          logInfo(`Removed "${selectedSubscription.displayName}" from favorites.`);
+        }
       }
     }
 
-    // Sort subscriptions: favorites first, then alphabetically
-    subscriptions.sort((a, b) => {
-      const aIsFav = favoriteIds.has(a.subscriptionId.toLowerCase());
-      const bIsFav = favoriteIds.has(b.subscriptionId.toLowerCase());
-      if (aIsFav !== bIsFav) return aIsFav ? -1 : 1;
-      return a.displayName.localeCompare(b.displayName);
-    });
-
-    // Scan favorites first for faster results
-    if (favoriteIds.size > 0) {
-      logDim("Scanning favorite subscriptions first...");
-    }
-
-    for (const sub of subscriptions) {
-      const roles = await listActiveAzureRoles(authContext.credential, sub.subscriptionId, sub.displayName, authContext.userId);
-      activeAzureRoles = activeAzureRoles.concat(roles);
-    }
+    // Fetch active roles only for the selected subscription
+    const activeAzureRoles = await listActiveAzureRoles(
+      authContext.credential,
+      selectedSubscription.subscriptionId,
+      selectedSubscription.displayName,
+      authContext.userId,
+    );
 
     if (activeAzureRoles.length === 0) {
       logWarning("No active roles found for deactivation.");
