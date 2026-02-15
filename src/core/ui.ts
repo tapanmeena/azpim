@@ -1,3 +1,4 @@
+import { ActivatePresetOptions, DeactivatePresetOptions } from "@/data/presets";
 import chalk from "chalk";
 import figures from "figures";
 import gradient from "gradient-string";
@@ -336,7 +337,7 @@ export const showHeader = (): void => {
   logBlank();
   console.log(
     drawBox(content, {
-      padding: { top: 1, bottom: 1, left: 3, right: 3 },
+      padding: { top: 1, bottom: 1, left: 6, right: 6 },
       margin: { left: 1 },
       borderColor: chalk.cyan,
       centerText: true,
@@ -424,23 +425,12 @@ export const formatStatus = (status: string): string => {
  */
 export const showSummary = (title: string, items: { label: string; value: string }[]): void => {
   if (isQuietMode()) return;
-  const boxWidth = 54;
-  const margin = "  ";
-  const titleWidth = Math.max(0, boxWidth - 4 - title.length);
 
-  // Gradient-style top border
-  const topLeft = chalk.blueBright("┌─");
-  const topTitle = chalk.cyanBright.bold(` ${title} `);
-  const topRight = chalk.cyan("─".repeat(titleWidth - 2)) + chalk.blueBright("─".repeat(2));
+  const headers = [chalk.cyan.bold(title), chalk.cyan.bold("Value")];
+  const rows = items.map((item) => [chalk.dim(item.label), chalk.white(item.value)]);
 
   logBlank();
-  console.log(margin + topLeft + topTitle + topRight);
-  items.forEach((item) => {
-    console.log(margin + chalk.blueBright("│") + chalk.cyan(" ") + chalk.dim(`${item.label}: `) + chalk.white(item.value));
-  });
-  // Gradient-style bottom border
-  const bottomBorder = chalk.blueBright("└" + "─".repeat(2)) + chalk.cyan("─".repeat(boxWidth - 4)) + chalk.blueBright("─".repeat(2));
-  console.log(margin + bottomBorder);
+  console.log(drawTable(headers, rows));
   logBlank();
 };
 
@@ -580,6 +570,45 @@ export const displayFavoritesTable = (favorites: Array<{ name: string; subscript
   const headers = ["", chalk.cyan.bold("Subscription Name"), chalk.cyan.bold("Subscription ID")];
 
   const rows = favorites.map((fav) => [chalk.yellow(icons.star), chalk.cyanBright.bold(fav.name), chalk.dim(fav.subscriptionId)]);
+
+  console.log(drawTable(headers, rows));
+};
+
+/**
+ * Display a detailed table for a single preset's configuration.
+ */
+export const displayPresetDetailTable = (entry: { activate?: ActivatePresetOptions; deactivate?: DeactivatePresetOptions }): void => {
+  if (isQuietMode()) return;
+
+  const headers = [chalk.cyan.bold("Command"), chalk.cyan.bold("Setting"), chalk.cyan.bold("Value")];
+  const rows: string[][] = [];
+  const unset = chalk.dim("(unset)");
+
+  if (entry.activate) {
+    const act = entry.activate;
+    rows.push([chalk.green.bold("activate"), chalk.dim("subscriptionId"), chalk.white(act.subscriptionId || unset)]);
+    rows.push(["", chalk.dim("roleNames"), act.roleNames ? chalk.white(act.roleNames.join(", ")) : unset]);
+    rows.push(["", chalk.dim("durationHours"), act.durationHours ? chalk.white(act.durationHours.toString()) : unset]);
+    rows.push(["", chalk.dim("justification"), chalk.white(act.justification || unset)]);
+    rows.push(["", chalk.dim("allowMultiple"), chalk.white(act.allowMultiple ? "Yes" : "No")]);
+  }
+
+  if (entry.deactivate) {
+    const deact = entry.deactivate;
+    if (rows.length > 0) {
+      // Add a visual separator row
+      rows.push(["", "", ""]);
+    }
+    rows.push([chalk.red.bold("deactivate"), chalk.dim("subscriptionId"), chalk.white(deact.subscriptionId || unset)]);
+    rows.push(["", chalk.dim("roleNames"), deact.roleNames ? chalk.white(deact.roleNames.join(", ")) : unset]);
+    rows.push(["", chalk.dim("justification"), chalk.white(deact.justification || unset)]);
+    rows.push(["", chalk.dim("allowMultiple"), chalk.white(deact.allowMultiple ? "Yes" : "No")]);
+  }
+
+  if (rows.length === 0) {
+    logDim("No configuration set for this preset.");
+    return;
+  }
 
   console.log(drawTable(headers, rows));
 };

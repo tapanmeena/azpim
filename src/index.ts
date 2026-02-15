@@ -9,7 +9,18 @@ import { type AuthenticatedCommandContext, withCommandHandler } from "./cli/comm
 import { runPresetAddWizard, runPresetEditWizard } from "./cli/presets-cli";
 import { handleCommandError, type OutputFormat } from "./core/errors";
 import { migrateGlobalFilesToUser } from "./core/paths";
-import { configureUi, displayFavoritesTable, logBlank, logDim, logInfo, logSuccess, logWarning, showHeader } from "./core/ui";
+import {
+  configureUi,
+  displayFavoritesTable,
+  displayPresetDetailTable,
+  displayPresetsTable,
+  logBlank,
+  logDim,
+  logInfo,
+  logSuccess,
+  logWarning,
+  showHeader,
+} from "./core/ui";
 import {
   addFavorite,
   clearFavorites,
@@ -421,13 +432,20 @@ presetCommand
 
       const defaultActivate = loaded.data.defaults?.activatePreset;
       const defaultDeactivate = loaded.data.defaults?.deactivatePreset;
-      for (const name of names) {
-        const tags: string[] = [];
-        if (defaultActivate === name) tags.push("default:activate");
-        if (defaultDeactivate === name) tags.push("default:deactivate");
-        const suffix = tags.length ? ` (${tags.join(", ")})` : "";
-        logInfo(`${name}${suffix}`);
-      }
+      const tableData = names.map((name) => {
+        const entry = getPreset(loaded.data, name);
+        const commands: string[] = [];
+        if (entry?.activate) commands.push("activate");
+        if (entry?.deactivate) commands.push("deactivate");
+        const isDefault = name === defaultActivate || name === defaultDeactivate;
+        return {
+          name,
+          description: entry?.description,
+          commands: commands.join(", ") || "-",
+          isDefault,
+        };
+      });
+      displayPresetsTable(tableData);
     }),
   );
 
@@ -463,23 +481,7 @@ presetCommand
       if (entry.description) logDim(entry.description);
       logBlank();
 
-      if (entry.activate) {
-        logInfo("activate:");
-        logDim(`  subscriptionId: ${entry.activate.subscriptionId ?? "(unset)"}`);
-        logDim(`  roleNames: ${(entry.activate.roleNames ?? []).join(", ") || "(unset)"}`);
-        logDim(`  durationHours: ${entry.activate.durationHours ?? "(unset)"}`);
-        logDim(`  justification: ${entry.activate.justification ?? "(unset)"}`);
-        logDim(`  allowMultiple: ${entry.activate.allowMultiple ?? "(unset)"}`);
-        logBlank();
-      }
-
-      if (entry.deactivate) {
-        logInfo("deactivate:");
-        logDim(`  subscriptionId: ${entry.deactivate.subscriptionId ?? "(unset)"}`);
-        logDim(`  roleNames: ${(entry.deactivate.roleNames ?? []).join(", ") || "(unset)"}`);
-        logDim(`  justification: ${entry.deactivate.justification ?? "(unset)"}`);
-        logDim(`  allowMultiple: ${entry.deactivate.allowMultiple ?? "(unset)"}`);
-      }
+      displayPresetDetailTable(entry);
     } catch (error: unknown) {
       handleCommandError(error, output);
     }
