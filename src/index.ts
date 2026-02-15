@@ -3,8 +3,13 @@
 import { Command } from "commander";
 import inquirer from "inquirer";
 import { name as npmPackageName, version } from "../package.json";
-import { authenticate } from "./auth";
-import { activateOnce, deactivateOnce, showMainMenu } from "./cli";
+import { authenticate } from "./azure/auth";
+import { activateOnce, deactivateOnce, showMainMenu } from "./cli/cli";
+import { type AuthenticatedCommandContext, withCommandHandler } from "./cli/command-handler";
+import { runPresetAddWizard, runPresetEditWizard } from "./cli/presets-cli";
+import { handleCommandError, type OutputFormat } from "./core/errors";
+import { migrateGlobalFilesToUser } from "./core/paths";
+import { configureUi, logBlank, logDim, logInfo, logSuccess, logWarning, showHeader } from "./core/ui";
 import {
   addFavorite,
   clearFavorites,
@@ -14,8 +19,7 @@ import {
   loadFavorites,
   removeFavorite,
   saveFavorites,
-} from "./favorites";
-import { migrateGlobalFilesToUser } from "./paths";
+} from "./data/favorites";
 import {
   expandTemplate,
   getPreset,
@@ -27,13 +31,9 @@ import {
   savePresets,
   setDefaultPresetName,
   upsertPreset,
-} from "./presets";
-import { runPresetAddWizard, runPresetEditWizard } from "./presets-cli";
-import { formatCacheAge, getCacheAge, getSubscriptionNameMap, invalidateCache, validateSubscriptionId } from "./subscription-cache";
-import { configureUi, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showHeader } from "./ui";
-import { checkForUpdate } from "./update-check";
-
-type OutputFormat = "text" | "json";
+} from "./data/presets";
+import { formatCacheAge, getCacheAge, getSubscriptionNameMap, invalidateCache, validateSubscriptionId } from "./data/subscription-cache";
+import { checkForUpdate } from "./data/update-check";
 
 type ActivateCommandOptions = {
   subscriptionId?: string;
@@ -95,8 +95,8 @@ const maybeNotifyUpdate = async (output: OutputFormat, quiet: boolean): Promise<
 };
 
 const getOptionValueSource = (command: Command, optionName: string): string | undefined => {
-  const fn = (command as any).getOptionValueSource;
-  if (typeof fn === "function") return fn.call(command, optionName);
+  const fn = (command as unknown as Record<string, unknown>).getOptionValueSource;
+  if (typeof fn === "function") return fn.call(command, optionName) as string | undefined;
   return undefined;
 };
 
@@ -139,28 +139,16 @@ program
   .option("--dry-run", "Resolve targets and print summary without submitting activation requests")
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
-  .action(async (cmd: ActivateCommandOptions, command: Command) => {
-    try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
+  .action(
+    withCommandHandler<ActivateCommandOptions>(program, async (cmd, ctx, command) => {
+      const { output, authContext } = ctx as AuthenticatedCommandContext;
 
-      // Show header (text mode only)
-      showHeader();
-
-      await maybeNotifyUpdate(output, quiet);
+      await maybeNotifyUpdate(output, ctx.quiet);
 
       const explicitPresetName = getOptionValueSource(command, "preset") === "cli" ? cmd.preset : undefined;
 
       const requestedRoleNames = cmd.roleName ?? [];
       const wantsOneShot = Boolean(cmd.nonInteractive || cmd.subscriptionId || requestedRoleNames.length > 0 || cmd.dryRun || explicitPresetName);
-
-      // Authenticate (required for both interactive and one-shot flows)
-      const authContext = await authenticate();
-
-      // Migrate global config files to user-specific location
-      await migrateGlobalFilesToUser(authContext.userId);
 
       if (!wantsOneShot) {
         await showMainMenu(authContext);
@@ -217,33 +205,8 @@ program
       if (output === "json") {
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       }
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-
-      if (errorMessage.includes("AADSTS")) {
-        logBlank();
-        logError("Authentication error detected. Please ensure you have the necessary permissions and try again.");
-        logDim("Tip: Make sure you are logged in with 'az login' before running this command.");
-      }
-
-      if (errorMessage.includes("Azure CLI not found") || errorMessage.includes("AzureCliCredential")) {
-        logBlank();
-        logDim("Tip: Make sure Azure CLI is installed and you are logged in with 'az login'.");
-      }
-
-      logBlank();
-      process.exit(1);
-    }
-  });
+    }),
+  );
 
 program
   .command("deactivate")
@@ -268,28 +231,16 @@ program
   .option("--dry-run", "Resolve targets and print summary without submitting deactivation requests")
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
-  .action(async (cmd: DeactivateCommandOptions, command: Command) => {
-    try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
+  .action(
+    withCommandHandler<DeactivateCommandOptions>(program, async (cmd, ctx, command) => {
+      const { output, authContext } = ctx as AuthenticatedCommandContext;
 
-      // Show header (text mode only)
-      showHeader();
-
-      await maybeNotifyUpdate(output, quiet);
+      await maybeNotifyUpdate(output, ctx.quiet);
 
       const explicitPresetName = getOptionValueSource(command, "preset") === "cli" ? cmd.preset : undefined;
 
       const requestedRoleNames = cmd.roleName ?? [];
       const wantsOneShot = Boolean(cmd.nonInteractive || cmd.subscriptionId || requestedRoleNames.length > 0 || cmd.dryRun || explicitPresetName);
-
-      // Authenticate (required for both interactive and one-shot flows)
-      const authContext = await authenticate();
-
-      // Migrate global config files to user-specific location
-      await migrateGlobalFilesToUser(authContext.userId);
 
       if (!wantsOneShot) {
         await showMainMenu(authContext);
@@ -342,33 +293,8 @@ program
       if (output === "json") {
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       }
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-
-      if (errorMessage.includes("AADSTS")) {
-        logBlank();
-        logError("Authentication error detected. Please ensure you have the necessary permissions and try again.");
-        logDim("Tip: Make sure you are logged in with 'az login' before running this command.");
-      }
-
-      if (errorMessage.includes("Azure CLI not found") || errorMessage.includes("AzureCliCredential")) {
-        logBlank();
-        logDim("Tip: Make sure Azure CLI is installed and you are logged in with 'az login'.");
-      }
-
-      logBlank();
-      process.exit(1);
-    }
-  });
+    }),
+  );
 
 program
   .command("check-update")
@@ -377,84 +303,77 @@ program
   .option("--check-only", "Only check and print status (no upgrade instructions)")
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
-  .action(async (cmd: UpdateCommandOptions) => {
-    try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
+  .action(
+    withCommandHandler<UpdateCommandOptions>(
+      program,
+      async (cmd, ctx) => {
+        const { output } = ctx;
 
-      showHeader();
+        const result = await checkForUpdate({
+          packageName: npmPackageName,
+          currentVersion: version,
+          mode: "force",
+        });
 
-      const result = await checkForUpdate({
-        packageName: npmPackageName,
-        currentVersion: version,
-        mode: "force",
-      });
+        const upgradeCommands = {
+          npm: `npm install -g ${npmPackageName}@latest`,
+          pnpm: `pnpm add -g ${npmPackageName}@latest`,
+        };
 
-      const upgradeCommands = {
-        npm: `npm install -g ${npmPackageName}@latest`,
-        pnpm: `pnpm add -g ${npmPackageName}@latest`,
-      };
-
-      if (output === "json") {
-        process.stdout.write(
-          `${JSON.stringify(
-            {
-              ...result,
-              upgradeCommands: result.updateAvailable ? upgradeCommands : undefined,
-            },
-            null,
-            2,
-          )}\n`,
-        );
-        process.exit(result.ok ? (result.updateAvailable ? 2 : 0) : 1);
-      }
-
-      if (!result.ok) {
-        logWarning("Could not check for updates.");
-        if (result.error) logDim(result.error);
-        if (!cmd.checkOnly) {
-          logBlank();
-          logDim(`Upgrade (when ready): ${upgradeCommands.npm}`);
-          logDim(`Or:                ${upgradeCommands.pnpm}`);
+        if (output === "json") {
+          process.stdout.write(
+            `${JSON.stringify(
+              {
+                ...result,
+                upgradeCommands: result.updateAvailable ? upgradeCommands : undefined,
+              },
+              null,
+              2,
+            )}\n`,
+          );
+          process.exit(result.ok ? (result.updateAvailable ? 2 : 0) : 1);
         }
-        process.exit(1);
-      }
 
-      if (result.updateAvailable && result.latestVersion) {
-        logWarning(`Update available: ${result.currentVersion} → ${result.latestVersion}`);
-        if (!cmd.checkOnly) {
-          logBlank();
-          logDim(`Upgrade: ${upgradeCommands.npm}`);
-          logDim(`Or:      ${upgradeCommands.pnpm}`);
+        if (!result.ok) {
+          logWarning("Could not check for updates.");
+          if (result.error) logDim(result.error);
+          if (!cmd.checkOnly) {
+            logBlank();
+            logDim(`Upgrade (when ready): ${upgradeCommands.npm}`);
+            logDim(`Or:                ${upgradeCommands.pnpm}`);
+          }
+          process.exit(1);
         }
-        process.exit(2);
-      }
 
-      logSuccess(`You're up to date (${result.currentVersion}).`);
-      process.exit(0);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
-    }
-  });
+        if (result.updateAvailable && result.latestVersion) {
+          logWarning(`Update available: ${result.currentVersion} → ${result.latestVersion}`);
+          if (!cmd.checkOnly) {
+            logBlank();
+            logDim(`Upgrade: ${upgradeCommands.npm}`);
+            logDim(`Or:      ${upgradeCommands.pnpm}`);
+          }
+          process.exit(2);
+        }
+
+        logSuccess(`You're up to date (${result.currentVersion}).`);
+        process.exit(0);
+      },
+      { auth: false },
+    ),
+  );
 
 program
   .command("help")
   .description("Display help information about azpim commands")
-  .action(() => {
-    showHeader();
-    program.outputHelp();
-  });
+  .action(
+    withCommandHandler(
+      program,
+      async () => {
+        program.outputHelp();
+      },
+      { auth: false },
+    ),
+  );
 
 const presetCommand = program
   .command("preset")
@@ -466,17 +385,9 @@ presetCommand
   .description("List available presets")
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
-  .action(async (cmd: PresetCommandOptions) => {
-    try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
-      const authContext = await authenticate();
-      await migrateGlobalFilesToUser(authContext.userId);
+  .action(
+    withCommandHandler<PresetCommandOptions>(program, async (_cmd, ctx) => {
+      const { output, authContext } = ctx as AuthenticatedCommandContext;
 
       const loaded = await loadPresets(authContext.userId);
       const names = listPresetNames(loaded.data);
@@ -517,19 +428,8 @@ presetCommand
         const suffix = tags.length ? ` (${tags.join(", ")})` : "";
         logInfo(`${name}${suffix}`);
       }
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
-    }
-  });
+    }),
+  );
 
 presetCommand
   .command("show")
@@ -538,14 +438,12 @@ presetCommand
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
   .action(async (name: string, cmd: PresetCommandOptions) => {
+    const output = (cmd.output ?? "text") as OutputFormat;
+    const quiet = Boolean(cmd.quiet || output === "json");
+    const debug = Boolean(program.opts().debug);
+    configureUi({ quiet, debug });
+    showHeader();
     try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
       const authContext = await authenticate();
       await migrateGlobalFilesToUser(authContext.userId);
 
@@ -582,17 +480,8 @@ presetCommand
         logDim(`  justification: ${entry.deactivate.justification ?? "(unset)"}`);
         logDim(`  allowMultiple: ${entry.deactivate.allowMultiple ?? "(unset)"}`);
       }
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
+    } catch (error: unknown) {
+      handleCommandError(error, output);
     }
   });
 
@@ -606,14 +495,12 @@ presetCommand
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
   .action(async (name: string | undefined, cmd: PresetCommandOptions, command: Command) => {
+    const output = (cmd.output ?? "text") as OutputFormat;
+    const quiet = Boolean(cmd.quiet || output === "json");
+    const debug = Boolean(program.opts().debug);
+    configureUi({ quiet, debug });
+    showHeader();
     try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
       const authContext = await authenticate();
       await migrateGlobalFilesToUser(authContext.userId);
 
@@ -681,17 +568,8 @@ presetCommand
 
       logSuccess(`Preset saved: ${wizard.name}`);
       logDim(`File: ${loaded.filePath}`);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
+    } catch (error: unknown) {
+      handleCommandError(error, output);
     }
   });
 
@@ -705,14 +583,12 @@ presetCommand
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
   .action(async (name: string, cmd: PresetCommandOptions, command: Command) => {
+    const output = (cmd.output ?? "text") as OutputFormat;
+    const quiet = Boolean(cmd.quiet || output === "json");
+    const debug = Boolean(program.opts().debug);
+    configureUi({ quiet, debug });
+    showHeader();
     try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
       const authContext = await authenticate();
       await migrateGlobalFilesToUser(authContext.userId);
 
@@ -762,17 +638,8 @@ presetCommand
 
       logSuccess(`Preset updated: ${name}`);
       logDim(`File: ${loaded.filePath}`);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
+    } catch (error: unknown) {
+      handleCommandError(error, output);
     }
   });
 
@@ -784,14 +651,12 @@ presetCommand
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
   .action(async (name: string, cmd: PresetCommandOptions) => {
+    const output = (cmd.output ?? "text") as OutputFormat;
+    const quiet = Boolean(cmd.quiet || output === "json");
+    const debug = Boolean(program.opts().debug);
+    configureUi({ quiet, debug });
+    showHeader();
     try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
       const authContext = await authenticate();
       await migrateGlobalFilesToUser(authContext.userId);
 
@@ -829,17 +694,8 @@ presetCommand
       }
 
       logSuccess(`Preset removed: ${name}`);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
+    } catch (error: unknown) {
+      handleCommandError(error, output);
     }
   });
 
@@ -861,18 +717,10 @@ favoritesCommand
   .description("List all favorite subscriptions")
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
-  .action(async (cmd: FavoritesCommandOptions) => {
-    try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
-      const authContext = await authenticate();
+  .action(
+    withCommandHandler<FavoritesCommandOptions>(program, async (_cmd, ctx) => {
+      const { output, authContext } = ctx as AuthenticatedCommandContext;
       const userId = authContext.userId;
-      await migrateGlobalFilesToUser(userId);
 
       const loaded = await loadFavorites(userId);
       const favoriteIds = getFavoriteIds(loaded.data);
@@ -903,19 +751,8 @@ favoritesCommand
         }
       }
       logBlank();
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
-    }
-  });
+    }),
+  );
 
 favoritesCommand
   .command("add")
@@ -925,14 +762,12 @@ favoritesCommand
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
   .action(async (subscriptionId: string, cmd: FavoritesCommandOptions) => {
+    const output = (cmd.output ?? "text") as OutputFormat;
+    const quiet = Boolean(cmd.quiet || output === "json");
+    const debug = Boolean(program.opts().debug);
+    configureUi({ quiet, debug });
+    showHeader();
     try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
       const authContext = await authenticate();
       const userId = authContext.userId;
       await migrateGlobalFilesToUser(userId);
@@ -976,17 +811,8 @@ favoritesCommand
       } else {
         logWarning(`Added unvalidated subscription ID "${normalizedId}" to favorites.`);
       }
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
+    } catch (error: unknown) {
+      handleCommandError(error, output);
     }
   });
 
@@ -997,14 +823,12 @@ favoritesCommand
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
   .action(async (subscriptionId: string, cmd: FavoritesCommandOptions) => {
+    const output = (cmd.output ?? "text") as OutputFormat;
+    const quiet = Boolean(cmd.quiet || output === "json");
+    const debug = Boolean(program.opts().debug);
+    configureUi({ quiet, debug });
+    showHeader();
     try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
       const authContext = await authenticate();
       const userId = authContext.userId;
       await migrateGlobalFilesToUser(userId);
@@ -1032,17 +856,8 @@ favoritesCommand
       }
 
       logSuccess(`Removed "${normalizedId}" from favorites.`);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
+    } catch (error: unknown) {
+      handleCommandError(error, output);
     }
   });
 
@@ -1052,18 +867,10 @@ favoritesCommand
   .option("-y, --yes", "Skip confirmation prompt")
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
-  .action(async (cmd: FavoritesCommandOptions & { yes?: boolean }) => {
-    try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
-      const authContext = await authenticate();
+  .action(
+    withCommandHandler<FavoritesCommandOptions & { yes?: boolean }>(program, async (cmd, ctx) => {
+      const { output, authContext } = ctx as AuthenticatedCommandContext;
       const userId = authContext.userId;
-      await migrateGlobalFilesToUser(userId);
 
       const loaded = await loadFavorites(userId);
       const favoriteIds = getFavoriteIds(loaded.data);
@@ -1102,19 +909,8 @@ favoritesCommand
       }
 
       logSuccess(`Cleared ${favoriteIds.length} favorite(s).`);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
-    }
-  });
+    }),
+  );
 
 favoritesCommand
   .command("export")
@@ -1123,14 +919,12 @@ favoritesCommand
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
   .action(async (filePath: string, cmd: FavoritesCommandOptions) => {
+    const output = (cmd.output ?? "text") as OutputFormat;
+    const quiet = Boolean(cmd.quiet || output === "json");
+    const debug = Boolean(program.opts().debug);
+    configureUi({ quiet, debug });
+    showHeader();
     try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
       const authContext = await authenticate();
       const userId = authContext.userId;
       await migrateGlobalFilesToUser(userId);
@@ -1151,17 +945,8 @@ favoritesCommand
       }
 
       logSuccess(`Exported ${favoriteIds.length} favorite(s) to ${filePath.trim()}`);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
+    } catch (error: unknown) {
+      handleCommandError(error, output);
     }
   });
 
@@ -1173,14 +958,12 @@ favoritesCommand
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
   .action(async (filePath: string, cmd: FavoritesCommandOptions) => {
+    const output = (cmd.output ?? "text") as OutputFormat;
+    const quiet = Boolean(cmd.quiet || output === "json");
+    const debug = Boolean(program.opts().debug);
+    configureUi({ quiet, debug });
+    showHeader();
     try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
       const authContext = await authenticate();
       const userId = authContext.userId;
       await migrateGlobalFilesToUser(userId);
@@ -1199,17 +982,8 @@ favoritesCommand
       }
 
       logSuccess(`Imported ${result.imported} new favorite(s), ${result.skipped} already existed.`);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
+    } catch (error: unknown) {
+      handleCommandError(error, output);
     }
   });
 
@@ -1218,24 +992,16 @@ favoritesCommand
   .description("Refresh the subscription cache")
   .option("--output <text|json>", "Output format", "text")
   .option("--quiet", "Suppress non-essential output (recommended with --output json)")
-  .action(async (cmd: FavoritesCommandOptions) => {
-    try {
-      const output = (cmd.output ?? "text") as OutputFormat;
-      const quiet = Boolean(cmd.quiet || output === "json");
-      const debug = Boolean(program.opts().debug);
-      configureUi({ quiet, debug });
-
-      showHeader();
-
-      // Authenticate to fetch subscriptions
-      const authContext = await authenticate();
+  .action(
+    withCommandHandler<FavoritesCommandOptions>(program, async (_cmd, ctx) => {
+      const { output, authContext } = ctx as AuthenticatedCommandContext;
       const userId = authContext.userId;
 
       logInfo("Invalidating subscription cache...");
       await invalidateCache(userId);
 
       logInfo("Fetching fresh subscription list...");
-      const azurePim = await import("./azure-pim.js");
+      const azurePim = await import("./azure/azure-pim.js");
       const subscriptions = await azurePim.fetchSubscriptions(authContext.credential, userId, { forceRefresh: true });
 
       if (output === "json") {
@@ -1244,18 +1010,7 @@ favoritesCommand
       }
 
       logSuccess(`Subscription cache refreshed. Found ${subscriptions.length} subscription(s).`);
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const output = (cmd.output ?? "text") as OutputFormat;
-      if (output === "json") {
-        process.stdout.write(`${JSON.stringify({ ok: false, error: errorMessage }, null, 2)}\n`);
-        process.exit(1);
-      }
-      logBlank();
-      logError(`An error occurred: ${errorMessage}`);
-      logBlank();
-      process.exit(1);
-    }
-  });
+    }),
+  );
 
 program.parse();

@@ -16,6 +16,8 @@ const USERS_DIR = "users";
 
 export const ENV_FAVORITES_PATH = "AZPIM_FAVORITES_PATH";
 export const ENV_PRESETS_PATH = "AZPIM_PRESETS_PATH";
+export const ENV_NO_UPDATE_NOTIFIER = "AZPIM_NO_UPDATE_NOTIFIER";
+export const ENV_DISABLE_UPDATE_CHECK = "AZPIM_DISABLE_UPDATE_CHECK";
 
 // ===============================
 // Base Directory
@@ -91,9 +93,9 @@ const moveFile = async (src: string, dest: string): Promise<boolean> => {
     await mkdir(destDir, { recursive: true });
     await rename(src, dest);
     return true;
-  } catch (error: any) {
+  } catch (error: unknown) {
     // If rename fails (cross-device), try manual copy+delete
-    if (error?.code === "EXDEV") {
+    if ((error as NodeJS.ErrnoException)?.code === "EXDEV") {
       const { readFile, writeFile } = await import("node:fs/promises");
       const content = await readFile(src);
       await writeFile(dest, content);
@@ -160,8 +162,8 @@ export const migrateGlobalFilesToUser = async (userId: string): Promise<void> =>
         await unlink(file.globalPath);
         logWarning(`Removed duplicate global ${file.name} file (user-specific version kept)`);
       }
-    } catch (error: any) {
-      logWarning(`Failed to migrate ${file.name}: ${error?.message ?? "unknown error"}`);
+    } catch (error: unknown) {
+      logWarning(`Failed to migrate ${file.name}: ${error instanceof Error ? error.message : "unknown error"}`);
     }
   }
 };

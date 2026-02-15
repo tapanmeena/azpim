@@ -15,9 +15,12 @@ A command-line interface tool for managing Azure Privileged Identity Management 
 - 🔄 **Multi-role Support** - Activate or deactivate multiple roles at once
 - 📊 **Status Tracking** - Real-time feedback on activation/deactivation status
 - 💾 **Presets** - Save and reuse activation/deactivation configurations
+- ⭐ **Favorites** - Mark subscriptions as favorites for quick access
+- 🗃️ **Subscription Cache** - Automatic caching of subscriptions (6-hour TTL) for faster startup
 - 🚀 **Non-interactive Mode** - CLI flags for scripting and automation
 - 🔔 **Update Notifications** - Automatic update checks with configurable behavior
 - 📤 **JSON Output** - Machine-readable output for integration with other tools
+- 👤 **Per-user Data Isolation** - Configuration and cache stored per Azure user ID
 
 ## Prerequisites
 
@@ -101,13 +104,19 @@ pnpm dev
 
 ### Commands
 
-| Command      | Alias     | Description                            |
-| ------------ | --------- | -------------------------------------- |
-| `activate`   | `a`       | Activate a role in Azure PIM (default) |
-| `deactivate` | `d`       | Deactivate a role in Azure PIM         |
-| `preset`     | -         | Manage reusable presets                |
-| `update`     | `upgrade` | Check for a newer version              |
-| `help`       | -         | Display help information               |
+| Command        | Alias               | Description                            |
+| -------------- | ------------------- | -------------------------------------- |
+| `activate`     | `a`                 | Activate a role in Azure PIM (default) |
+| `deactivate`   | `d`                 | Deactivate a role in Azure PIM         |
+| `preset`       | -                   | Manage reusable presets                |
+| `favorites`    | `fav`               | Manage favorite subscriptions          |
+| `check-update` | `update`, `upgrade` | Check for a newer version              |
+| `help`         | -                   | Display help information               |
+
+**Global Flags:**
+
+- `--debug` - Enable debug logging
+- `--version` - Show version number
 
 #### Preset Subcommands
 
@@ -118,6 +127,18 @@ pnpm dev
 | `preset add`    | Add a new preset (interactive wizard)        |
 | `preset edit`   | Edit an existing preset (interactive wizard) |
 | `preset remove` | Remove a preset                              |
+
+#### Favorites Subcommands
+
+| Command             | Description                          |
+| ------------------- | ------------------------------------ |
+| `favorites list`    | List all favorite subscriptions      |
+| `favorites add`     | Add a subscription to favorites      |
+| `favorites remove`  | Remove a subscription from favorites |
+| `favorites clear`   | Clear all favorites                  |
+| `favorites export`  | Export favorites to a file           |
+| `favorites import`  | Import favorites from a file         |
+| `favorites refresh` | Refresh the subscription cache       |
 
 ### Updates
 
@@ -132,6 +153,7 @@ azpim upgrade
 Notes:
 
 - `azpim update` exits with code `0` when up-to-date, `2` when an update is available, and `1` on error.
+- `--check-only` - Only check and print status without showing upgrade instructions.
 - `--output json` returns a structured response suitable for scripts.
 - By default, `azpim activate` and `azpim deactivate` will also show a short "update available" hint (text mode only) at most once per day.
 - Disable update checks via `AZPIM_NO_UPDATE_NOTIFIER=1` (or `AZPIM_DISABLE_UPDATE_CHECK=1`).
@@ -315,6 +337,71 @@ When you create a preset via `azpim preset add`, you can optionally set it as th
 2. Select roles to deactivate
 3. Confirm deactivation
 
+## Favorites
+
+Favorites allow you to mark specific subscriptions for quick access. Favorite subscriptions are displayed at the top of subscription lists in the interactive menu.
+
+### Favorites file location
+
+By default, favorites are stored per-user:
+
+- macOS/Linux: `~/.config/azpim/users/<userId>/favorites.json`
+- Windows: `%APPDATA%\azpim\users\<userId>\favorites.json`
+
+Override the location with:
+
+- `AZPIM_FAVORITES_PATH=/path/to/favorites.json`
+
+### Common Workflows
+
+```bash
+# List all favorites
+azpim favorites list
+azpim fav list
+
+# Add a subscription to favorites
+azpim favorites add <subscription-id>
+
+# Add even if subscription is not in cache
+azpim favorites add <subscription-id> --force
+
+# Remove a subscription from favorites
+azpim favorites remove <subscription-id>
+
+# Clear all favorites
+azpim favorites clear
+
+# Export favorites to a file
+azpim favorites export ./my-favorites.json
+
+# Import favorites from a file (replaces existing)
+azpim favorites import ./my-favorites.json
+
+# Import favorites and merge with existing
+azpim favorites import ./my-favorites.json --merge
+
+# Refresh the subscription cache
+azpim favorites refresh
+```
+
+## Subscription Cache
+
+azpim automatically caches subscription information to improve startup time. The cache has a 6-hour TTL (time-to-live) and is refreshed automatically when expired.
+
+### Cache location
+
+Cache files are stored per-user:
+
+- macOS/Linux: `~/.config/azpim/users/<userId>/subscriptions-cache.json`
+- Windows: `%APPDATA%\azpim\users\<userId>\subscriptions-cache.json`
+
+### Refreshing the cache
+
+```bash
+# Force refresh the subscription cache
+azpim favorites refresh
+```
+
 ## Development
 
 ### Available Scripts
@@ -384,18 +471,43 @@ pnpm publish
 ```
 azpim/
 ├── src/
-│   ├── index.ts          # CLI entry point and command definitions
-│   ├── auth.ts           # Azure authentication handling
-│   ├── azure-pim.ts      # Azure PIM API operations
-│   ├── cli.ts            # Interactive menu and user flows
-│   ├── presets.ts        # Preset configuration and storage
-│   ├── presets-cli.ts    # Preset wizard flows
-│   ├── ui.ts             # Terminal UI utilities (spinners, formatting)
-│   └── update-check.ts   # Update notification system
+│   ├── index.ts                        # CLI entry point and command definitions
+│   ├── core/                           # Foundational utilities (no domain logic)
+│   │   ├── constants.ts                # Shared magic values and defaults
+│   │   ├── errors.ts                   # Unified error handling utilities
+│   │   ├── json-store.ts              # Generic JSON file persistence
+│   │   ├── paths.ts                    # Config/data file path resolution
+│   │   └── ui.ts                       # Terminal UI (spinners, formatting, colors)
+│   ├── azure/                          # Azure SDK wrappers
+│   │   ├── auth.ts                     # Azure CLI credential + Graph /me lookup
+│   │   └── azure-pim.ts               # PIM role activation/deactivation API
+│   ├── data/                           # Local data persistence
+│   │   ├── favorites.ts               # Favorites management
+│   │   ├── presets.ts                  # Preset configuration and validation
+│   │   ├── subscription-cache.ts      # Subscription caching (6-hour TTL)
+│   │   └── update-check.ts            # Update notification system
+│   └── cli/                            # Interactive flows and command scaffolding
+│       ├── cli.ts                      # Main menu loop and shared helpers
+│       ├── command-handler.ts         # Reusable command wrapper (auth, UI, errors)
+│       ├── activate-flow.ts           # Role activation (one-shot + interactive)
+│       ├── deactivate-flow.ts         # Role deactivation (one-shot + interactive)
+│       ├── subscription-selector.ts   # Subscription search/select with favorites
+│       ├── favorites-manager.ts       # Interactive favorites management menu
+│       └── presets-cli.ts             # Preset add/edit/manage wizards
 ├── package.json
 ├── tsconfig.json
+├── CHANGELOG.md
 └── README.md
 ```
+
+### Architecture
+
+The codebase follows a layered module structure:
+
+- **`core/`** — Zero-dependency utilities shared across the entire project. `json-store.ts` provides a generic load/save pattern used by all data persistence files. `errors.ts` centralizes error extraction and command-level error handling. `constants.ts` eliminates magic values.
+- **`azure/`** — Thin wrappers around Azure SDKs (`@azure/identity`, `@azure/arm-authorization`, Microsoft Graph). No UI logic.
+- **`data/`** — Local file persistence (favorites, presets, subscription cache, update state). All use `json-store` for consistent file I/O.
+- **`cli/`** — User-facing interactive flows and command scaffolding. `command-handler.ts` provides a `withCommandHandler` wrapper that eliminates boilerplate (auth, UI setup, error handling) across all Commander commands. Activation and deactivation flows share a `selectSubscriptionInteractive` function from `subscription-selector.ts`.
 
 ### Tech Stack
 
@@ -405,6 +517,15 @@ azpim/
 - **Ora** - Elegant terminal spinners
 - **Chalk** - Terminal string styling
 - **Azure SDK** - Azure service integration
+
+## Environment Variables
+
+| Variable                     | Description                                   |
+| ---------------------------- | --------------------------------------------- |
+| `AZPIM_PRESETS_PATH`         | Override the presets file path                |
+| `AZPIM_FAVORITES_PATH`       | Override the favorites file path              |
+| `AZPIM_NO_UPDATE_NOTIFIER`   | Set to `1` to disable automatic update checks |
+| `AZPIM_DISABLE_UPDATE_CHECK` | Alias for `AZPIM_NO_UPDATE_NOTIFIER`          |
 
 ## Troubleshooting
 

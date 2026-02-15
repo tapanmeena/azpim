@@ -1,10 +1,17 @@
+import {
+  DEFAULT_DURATION_HOURS,
+  DEFAULT_JUSTIFICATION_ACTIVATE,
+  DEFAULT_JUSTIFICATION_DEACTIVATE,
+  DURATION_MAX_HOURS,
+  DURATION_MIN_HOURS,
+} from "@/core/constants";
 import chalk from "chalk";
 import inquirer from "inquirer";
-import { authenticate, type AuthContext } from "./auth";
-import { fetchEligibleRolesForSubscription, fetchSubscriptions } from "./azure-pim";
-import type { ActivatePresetOptions, DeactivatePresetOptions, PresetCommandName, PresetEntry } from "./presets";
-import { getPreset, listPresetNames, loadPresets, removePreset, savePresets, setDefaultPresetName, upsertPreset } from "./presets";
-import { formatSubscription, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showDivider } from "./ui";
+import { authenticate, type AuthContext } from "../azure/auth";
+import { fetchEligibleRolesForSubscription, fetchSubscriptions } from "../azure/azure-pim";
+import { formatSubscription, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showDivider } from "../core/ui";
+import type { ActivatePresetOptions, DeactivatePresetOptions, PresetCommandName, PresetEntry, PresetsFile } from "../data/presets";
+import { getPreset, listPresetNames, loadPresets, removePreset, savePresets, setDefaultPresetName, upsertPreset } from "../data/presets";
 
 export type PresetAddWizardResult = {
   name: string;
@@ -246,7 +253,7 @@ const promptForCommonFields = async (
   command: PresetCommandName,
   defaults?: { justification?: string; allowMultiple?: boolean },
 ): Promise<{ justification?: string; allowMultiple?: boolean }> => {
-  const defaultJustification = command === "activate" ? "Activated via azpim" : "Deactivated via azpim";
+  const defaultJustification = command === "activate" ? DEFAULT_JUSTIFICATION_ACTIVATE : DEFAULT_JUSTIFICATION_DEACTIVATE;
 
   const { justification } = await inquirer.prompt<{ justification: string }>([
     {
@@ -278,10 +285,10 @@ const promptForDurationHours = async (defaultValue?: number): Promise<number | u
       type: "number",
       name: "durationHours",
       message: chalk.cyan("Activation duration hours (1-8):"),
-      default: defaultValue ?? 8,
+      default: defaultValue ?? DEFAULT_DURATION_HOURS,
       validate: (value) => {
         const n = Number(value);
-        if (!Number.isFinite(n) || n < 1 || n > 8) return chalk.red("Enter a number between 1 and 8.");
+        if (!Number.isFinite(n) || n < DURATION_MIN_HOURS || n > DURATION_MAX_HOURS) return chalk.red("Enter a number between 1 and 8.");
         return true;
       },
     },
@@ -683,7 +690,7 @@ export const runPresetsManager = async (authContext: AuthContext): Promise<void>
             },
           ]);
 
-          let nextData = { ...presets.data } as any;
+          let nextData: PresetsFile = { ...presets.data };
           nextData = setDefaultPresetName(nextData, "activate", activate === "(none)" ? undefined : activate);
           nextData = setDefaultPresetName(nextData, "deactivate", deactivate === "(none)" ? undefined : deactivate);
 
@@ -702,9 +709,9 @@ export const runPresetsManager = async (authContext: AuthContext): Promise<void>
           logBlank();
           process.exit(0);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logBlank();
-      logError(`An error occurred: ${err?.message ?? String(err)}`);
+      logError(`An error occurred: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 };

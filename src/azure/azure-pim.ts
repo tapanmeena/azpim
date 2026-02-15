@@ -2,7 +2,8 @@ import { AuthorizationManagementClient } from "@azure/arm-authorization";
 import { SubscriptionClient } from "@azure/arm-resources-subscriptions";
 import { AzureCliCredential } from "@azure/identity";
 import { v4 as uuidv4 } from "uuid";
-import { loadCachedSubscriptions, saveCachedSubscriptions } from "./subscription-cache";
+import { PIM_FILTER_AS_TARGET } from "../core/constants";
+
 import {
   failSpinner,
   formatStatus,
@@ -15,7 +16,8 @@ import {
   startSpinner,
   succeedSpinner,
   warnSpinner,
-} from "./ui";
+} from "../core/ui";
+import { loadCachedSubscriptions, saveCachedSubscriptions } from "../data/subscription-cache";
 
 export interface AzureSubscription {
   subscriptionId: string;
@@ -56,6 +58,15 @@ export interface AzureActivationRequest {
   principalId: string;
   justification: string;
   durationHours: number;
+}
+
+export interface AzureDeactivationRequest {
+  scope: string;
+  roleEligibilityScheduleId: string;
+  subscriptionId: string;
+  principalId: string;
+  roleDefinitionId: string;
+  roleName?: string;
 }
 
 export type FetchSubscriptionsOptions = {
@@ -124,10 +135,10 @@ export const fetchEligibleRolesForSubscription = async (
   try {
     logDebug("Querying eligible role schedules", {
       scope,
-      filter: "asTarget()",
+      filter: PIM_FILTER_AS_TARGET,
     });
     const schedules = client.roleEligibilitySchedules.listForScope(scope, {
-      filter: `asTarget()`,
+      filter: PIM_FILTER_AS_TARGET,
     });
 
     for await (const schedule of schedules) {
@@ -151,15 +162,16 @@ export const fetchEligibleRolesForSubscription = async (
     });
     succeedSpinner(`Found ${eligibleRoles.length} eligible role(s) for "${subscriptionName}"`);
     return eligibleRoles;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Record<string, unknown>;
     logDebug("Error fetching eligible roles", {
       subscriptionName,
-      errorType: error?.constructor?.name,
-      statusCode: error?.statusCode,
-      code: error?.code,
-      message: error?.message,
+      errorType: err?.constructor?.name,
+      statusCode: err?.statusCode,
+      code: err?.code,
+      message: (error as Error)?.message,
     });
-    if (error.statusCode === 403 || error.code === "AuthorizationFailed") {
+    if (err.statusCode === 403 || err.code === "AuthorizationFailed") {
       warnSpinner(`Insufficient permissions for subscription "${subscriptionName}"`);
       return [];
     }
@@ -182,9 +194,12 @@ export const listActiveAzureRoles = async (
   const activeRoles: ActiveAzureRole[] = [];
 
   try {
-    logDebug("Querying active role schedules", { scope, filter: "asTarget()" });
+    logDebug("Querying active role schedules", {
+      scope,
+      filter: PIM_FILTER_AS_TARGET,
+    });
     const schedules = client.roleAssignmentSchedules.listForScope(scope, {
-      filter: `asTarget()`,
+      filter: PIM_FILTER_AS_TARGET,
     });
 
     for await (const schedule of schedules) {
@@ -211,15 +226,16 @@ export const listActiveAzureRoles = async (
     });
     succeedSpinner(`Found ${activeRoles.length} active role(s) for "${subscriptionName}"`);
     return activeRoles;
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Record<string, unknown>;
     logDebug("Error fetching active roles", {
       subscriptionName,
-      errorType: error?.constructor?.name,
-      statusCode: error?.statusCode,
-      code: error?.code,
-      message: error?.message,
+      errorType: err?.constructor?.name,
+      statusCode: err?.statusCode,
+      code: err?.code,
+      message: (error as Error)?.message,
     });
-    if (error.statusCode === 403 || error.code === "AuthorizationFailed") {
+    if (err.statusCode === 403 || err.code === "AuthorizationFailed") {
       warnSpinner(`Insufficient permissions for subscription "${subscriptionName}"`);
       return [];
     }
@@ -296,17 +312,18 @@ export const activateAzureRole = async (
 
     return { status: response.status };
   } catch (error) {
+    const err = error as Record<string, unknown>;
     logDebug("Activation error", {
       roleName: request.roleName,
-      errorType: (error as any)?.constructor?.name,
-      statusCode: (error as any)?.statusCode,
-      code: (error as any)?.code,
+      errorType: err?.constructor?.name,
+      statusCode: err?.statusCode,
+      code: err?.code,
       message: (error as Error)?.message,
     });
     failSpinner(`Failed to activate role "${request.roleName}"`);
 
     // Provide helpful guidance for specific error codes
-    const errorCode = (error as any)?.code;
+    const errorCode = err?.code as string | undefined;
     const errorMessage = (error as Error)?.message || "";
 
     if (errorCode === "RoleAssignmentRequestPolicyValidationFailed" && errorMessage.includes("ExpirationRule")) {
@@ -320,15 +337,8 @@ export const activateAzureRole = async (
   }
 };
 
-export const deactivateAzureRole = async (
-  credential: AzureCliCredential,
-  scope: string,
-  roleEligibilityScheduleId: string,
-  subscriptionId: string,
-  principalId: string,
-  roleDefinitionId: string,
-  roleName?: string,
-): Promise<void> => {
+export const deactivateAzureRole = async (credential: AzureCliCredential, request: AzureDeactivationRequest): Promise<void> => {
+  const { scope, roleEligibilityScheduleId, subscriptionId, principalId, roleDefinitionId, roleName } = request;
   logDebug("Creating AuthorizationManagementClient for deactivation...", {
     subscriptionId,
   });
@@ -356,11 +366,12 @@ export const deactivateAzureRole = async (
     logDebug("Deactivation successful", { roleName: displayName });
     succeedSpinner(`Successfully deactivated "${displayName}"`);
   } catch (error) {
+    const err = error as Record<string, unknown>;
     logDebug("Deactivation error", {
       roleName: displayName,
-      errorType: (error as any)?.constructor?.name,
-      statusCode: (error as any)?.statusCode,
-      code: (error as any)?.code,
+      errorType: err?.constructor?.name,
+      statusCode: err?.statusCode,
+      code: err?.code,
       message: (error as Error)?.message,
     });
     failSpinner(`Failed to deactivate "${displayName}"`);
