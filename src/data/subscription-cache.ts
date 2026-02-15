@@ -1,8 +1,8 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { unlink } from "node:fs/promises";
 
-import type { AzureSubscription } from "./azure-pim";
-import { getUserDataPath } from "./paths";
+import type { AzureSubscription } from "../azure/azure-pim";
+import { loadJsonFile, saveJsonFile } from "../core/json-store";
+import { getUserDataPath } from "../core/paths";
 
 // ===============================
 // Types
@@ -58,11 +58,12 @@ const normalizeSubscriptionCacheFile = (json: unknown): SubscriptionCacheFile | 
 
   const subscriptions: AzureSubscription[] = [];
   for (const sub of file.subscriptions) {
-    if (sub && typeof sub === "object" && typeof (sub as any).subscriptionId === "string" && typeof (sub as any).displayName === "string") {
+    const entry = sub as Record<string, unknown>;
+    if (entry && typeof entry === "object" && typeof entry.subscriptionId === "string" && typeof entry.displayName === "string") {
       subscriptions.push({
-        subscriptionId: (sub as any).subscriptionId,
-        displayName: (sub as any).displayName,
-        tenantId: typeof (sub as any).tenantId === "string" ? (sub as any).tenantId : "",
+        subscriptionId: entry.subscriptionId,
+        displayName: entry.displayName,
+        tenantId: typeof entry.tenantId === "string" ? entry.tenantId : "",
       });
     }
   }
@@ -84,31 +85,21 @@ const normalizeSubscriptionCacheFile = (json: unknown): SubscriptionCacheFile | 
  */
 export const loadCachedSubscriptions = async (userId: string): Promise<LoadedSubscriptionCache> => {
   const filePath = getCacheFilePath(userId);
-  try {
-    const raw = await readFile(filePath, "utf8");
-    const json = JSON.parse(raw) as unknown;
-    const data = normalizeSubscriptionCacheFile(json);
+  const result = await loadJsonFile(filePath, {
+    normalize: normalizeSubscriptionCacheFile,
+    label: "Invalid subscription cache JSON",
+  });
 
-    if (!data) {
-      return { filePath, data: null, exists: true, isFresh: false };
-    }
-
-    // Check if cache is fresh
-    const lastUpdatedMs = Date.parse(data.lastUpdated);
-    const now = Date.now();
-    const isFresh = Number.isFinite(lastUpdatedMs) && now - lastUpdatedMs < SUBSCRIPTION_CACHE_TTL_MS;
-
-    return { filePath, data, exists: true, isFresh };
-  } catch (error: any) {
-    if (error?.code === "ENOENT") {
-      return { filePath, data: null, exists: false, isFresh: false };
-    }
-    if (error instanceof SyntaxError) {
-      // Invalid JSON, treat as non-existent
-      return { filePath, data: null, exists: true, isFresh: false };
-    }
-    throw error;
+  if (!result.data) {
+    return { filePath, data: null, exists: result.exists, isFresh: false };
   }
+
+  // Check if cache is fresh
+  const lastUpdatedMs = Date.parse(result.data.lastUpdated);
+  const now = Date.now();
+  const isFresh = Number.isFinite(lastUpdatedMs) && now - lastUpdatedMs < SUBSCRIPTION_CACHE_TTL_MS;
+
+  return { filePath, data: result.data, exists: true, isFresh };
 };
 
 /**
@@ -118,8 +109,6 @@ export const loadCachedSubscriptions = async (userId: string): Promise<LoadedSub
  */
 export const saveCachedSubscriptions = async (userId: string, subscriptions: AzureSubscription[]): Promise<void> => {
   const filePath = getCacheFilePath(userId);
-  const dir = path.dirname(filePath);
-  await mkdir(dir, { recursive: true });
 
   const data: SubscriptionCacheFile = {
     version: 1,
@@ -127,8 +116,7 @@ export const saveCachedSubscriptions = async (userId: string, subscriptions: Azu
     subscriptions,
   };
 
-  const payload = JSON.stringify(data, null, 2);
-  await writeFile(filePath, `${payload}\n`, "utf8");
+  await saveJsonFile(filePath, data);
 };
 
 /**
@@ -140,8 +128,8 @@ export const invalidateCache = async (userId: string): Promise<boolean> => {
   try {
     await unlink(filePath);
     return true;
-  } catch (error: any) {
-    if (error?.code === "ENOENT") {
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
       return false; // File didn't exist
     }
     throw error;

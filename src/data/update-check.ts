@@ -1,9 +1,9 @@
 import "isomorphic-fetch";
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { getBaseConfigDir } from "./paths";
+import { loadJsonFile, saveJsonFile } from "../core/json-store";
+import { ENV_DISABLE_UPDATE_CHECK, ENV_NO_UPDATE_NOTIFIER, getBaseConfigDir } from "../core/paths";
 
 export type UpdateCheckMode = "auto" | "force";
 
@@ -52,7 +52,7 @@ const isUpdateAvailable = (currentVersion: string, latestVersion: string): boole
 };
 
 const isDisabledByEnv = (): boolean => {
-  const keys = ["AZPIM_NO_UPDATE_NOTIFIER", "AZPIM_DISABLE_UPDATE_CHECK"];
+  const keys = [ENV_NO_UPDATE_NOTIFIER, ENV_DISABLE_UPDATE_CHECK];
   for (const key of keys) {
     const value = process.env[key];
     if (!value) continue;
@@ -63,26 +63,21 @@ const isDisabledByEnv = (): boolean => {
 };
 
 const readState = async (filePath: string): Promise<UpdateCheckStateFile | undefined> => {
-  try {
-    const raw = await readFile(filePath, "utf8");
-    const json = JSON.parse(raw) as unknown;
-    if (!json || typeof json !== "object") return undefined;
-
-    const lastCheckedAt = (json as any).lastCheckedAt;
-    const latestVersion = (json as any).latestVersion;
-
-    if (typeof lastCheckedAt !== "string" || typeof latestVersion !== "string") return undefined;
-    return { lastCheckedAt, latestVersion };
-  } catch (error: any) {
-    if (error?.code === "ENOENT") return undefined;
-    return undefined;
-  }
+  const result = await loadJsonFile(filePath, {
+    normalize: (json) => {
+      if (!json || typeof json !== "object") return null;
+      const obj = json as Record<string, unknown>;
+      const lastCheckedAt = obj.lastCheckedAt;
+      const latestVersion = obj.latestVersion;
+      if (typeof lastCheckedAt !== "string" || typeof latestVersion !== "string") return null;
+      return { lastCheckedAt, latestVersion } as UpdateCheckStateFile;
+    },
+  });
+  return result.data ?? undefined;
 };
 
 const writeState = async (filePath: string, state: UpdateCheckStateFile): Promise<void> => {
-  const dir = path.dirname(filePath);
-  await mkdir(dir, { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await saveJsonFile(filePath, state);
 };
 
 const fetchLatestVersion = async (packageName: string, timeoutMs: number): Promise<string> => {
@@ -104,7 +99,7 @@ const fetchLatestVersion = async (packageName: string, timeoutMs: number): Promi
       throw new Error(`npm registry request failed: ${res.status} ${res.statusText}`);
     }
 
-    const json = (await res.json()) as any;
+    const json = (await res.json()) as Record<string, unknown>;
     const version = typeof json?.version === "string" ? json.version : undefined;
     if (!version) throw new Error("npm registry response missing version");
     return version;
@@ -176,7 +171,7 @@ export const checkForUpdate = async (options: {
       checkedAt: now.toISOString(),
       cached: false,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       ok: false,
       packageName,

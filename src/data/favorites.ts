@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { ENV_FAVORITES_PATH, getUserDataPath } from "./paths";
+import { loadJsonFile, saveJsonFile } from "../core/json-store";
+import { ENV_FAVORITES_PATH, getUserDataPath } from "../core/paths";
 
 // ===============================
 // Types
@@ -69,30 +70,19 @@ const normalizeFavoritesFile = (json: unknown): FavoritesFile => {
  */
 export const loadFavorites = async (userId: string): Promise<LoadedFavorites> => {
   const filePath = getFavoritesFilePath(userId);
-  try {
-    const raw = await readFile(filePath, "utf8");
-    const json = JSON.parse(raw) as unknown;
-    return { filePath, data: normalizeFavoritesFile(json), exists: true };
-  } catch (error: any) {
-    if (error?.code === "ENOENT") {
-      return {
-        filePath,
-        data: { version: 1, subscriptionIds: [] },
-        exists: false,
-      };
-    }
-    if (error instanceof SyntaxError) {
-      throw new Error(`Invalid favorites file JSON at ${filePath}`);
-    }
-    throw error;
-  }
+  const result = await loadJsonFile(filePath, {
+    normalize: normalizeFavoritesFile,
+    label: "Invalid favorites file JSON",
+  });
+  return {
+    filePath,
+    data: result.data ?? { version: 1, subscriptionIds: [] },
+    exists: result.exists,
+  };
 };
 
 export const saveFavorites = async (filePath: string, data: FavoritesFile): Promise<void> => {
-  const dir = path.dirname(filePath);
-  await mkdir(dir, { recursive: true });
-  const payload = JSON.stringify(data, null, 2);
-  await writeFile(filePath, `${payload}\n`, "utf8");
+  await saveJsonFile(filePath, data);
 };
 
 // ===============================
@@ -194,7 +184,7 @@ export const importFavorites = async (
     // Export format: { favorites: [{ subscriptionId: "..." }] }
     importedIds = importFile.favorites
       .filter((item): item is { subscriptionId: string } => {
-        return item && typeof item === "object" && typeof (item as any).subscriptionId === "string";
+        return item && typeof item === "object" && typeof (item as Record<string, unknown>).subscriptionId === "string";
       })
       .map((item) => item.subscriptionId.trim().toLowerCase());
   } else if (Array.isArray(importFile.subscriptionIds)) {

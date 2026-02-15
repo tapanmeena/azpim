@@ -1,10 +1,10 @@
 import chalk from "chalk";
 import inquirer from "inquirer";
-import { authenticate, type AuthContext } from "./auth";
-import { fetchEligibleRolesForSubscription, fetchSubscriptions } from "./azure-pim";
-import type { ActivatePresetOptions, DeactivatePresetOptions, PresetCommandName, PresetEntry } from "./presets";
-import { getPreset, listPresetNames, loadPresets, removePreset, savePresets, setDefaultPresetName, upsertPreset } from "./presets";
-import { formatSubscription, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showDivider } from "./ui";
+import { authenticate, type AuthContext } from "../azure/auth";
+import { fetchEligibleRolesForSubscription, fetchSubscriptions } from "../azure/azure-pim";
+import { formatSubscription, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showDivider } from "../core/ui";
+import type { ActivatePresetOptions, DeactivatePresetOptions, PresetCommandName, PresetEntry, PresetsFile } from "../data/presets";
+import { getPreset, listPresetNames, loadPresets, removePreset, savePresets, setDefaultPresetName, upsertPreset } from "../data/presets";
 
 export type PresetAddWizardResult = {
   name: string;
@@ -683,7 +683,7 @@ export const runPresetsManager = async (authContext: AuthContext): Promise<void>
             },
           ]);
 
-          let nextData = { ...presets.data } as any;
+          let nextData: PresetsFile = { ...presets.data };
           nextData = setDefaultPresetName(nextData, "activate", activate === "(none)" ? undefined : activate);
           nextData = setDefaultPresetName(nextData, "deactivate", deactivate === "(none)" ? undefined : deactivate);
 
@@ -702,9 +702,9 @@ export const runPresetsManager = async (authContext: AuthContext): Promise<void>
           logBlank();
           process.exit(0);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       logBlank();
-      logError(`An error occurred: ${err?.message ?? String(err)}`);
+      logError(`An error occurred: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 };

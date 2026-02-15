@@ -3,11 +3,9 @@ import { Client } from "@microsoft/microsoft-graph-client";
 import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { failSpinner, logDebug, showUserInfo, startSpinner, succeedSpinner } from "./ui";
+import { failSpinner, logDebug, showUserInfo, startSpinner, succeedSpinner } from "../core/ui";
 
-const GRAPH_SCOPES = ["https://graph.microsoft.com/.default"];
-
-const ARM_SCOPES = ["https://management.azure.com/.default"];
+export const GRAPH_SCOPES = ["https://graph.microsoft.com/.default"];
 
 export interface AuthContext {
   credential: AzureCliCredential;
@@ -75,23 +73,12 @@ export const authenticate = async (): Promise<AuthContext> => {
     };
   } catch (error) {
     logDebug("Authentication error", {
-      errorType: (error as any)?.constructor?.name,
-      errorCode: (error as any)?.code,
-      statusCode: (error as any)?.statusCode,
+      errorType: (error as Record<string, unknown>)?.constructor?.name,
+      errorCode: (error as Record<string, unknown>)?.code,
+      statusCode: (error as Record<string, unknown>)?.statusCode,
       message: (error as Error)?.message,
     });
     failSpinner("Authentication failed");
     throw error;
   }
-};
-
-export const getArmToken = async (credential: AzureCliCredential): Promise<string> => {
-  logDebug("Acquiring ARM token...", { scopes: ARM_SCOPES });
-  const tokenResponse = await credential.getToken(ARM_SCOPES);
-  if (!tokenResponse) {
-    logDebug("Failed to acquire ARM token");
-    throw new Error("Failed to acquire ARM token");
-  }
-  logDebug("ARM token acquired successfully");
-  return tokenResponse.token;
 };
