@@ -1,3 +1,10 @@
+import {
+  DEFAULT_DURATION_HOURS,
+  DEFAULT_JUSTIFICATION_ACTIVATE,
+  DEFAULT_JUSTIFICATION_DEACTIVATE,
+  DURATION_MAX_HOURS,
+  DURATION_MIN_HOURS,
+} from "@/core/constants";
 import chalk from "chalk";
 import inquirer from "inquirer";
 import { authenticate, type AuthContext } from "../azure/auth";
@@ -246,7 +253,7 @@ const promptForCommonFields = async (
   command: PresetCommandName,
   defaults?: { justification?: string; allowMultiple?: boolean },
 ): Promise<{ justification?: string; allowMultiple?: boolean }> => {
-  const defaultJustification = command === "activate" ? "Activated via azpim" : "Deactivated via azpim";
+  const defaultJustification = command === "activate" ? DEFAULT_JUSTIFICATION_ACTIVATE : DEFAULT_JUSTIFICATION_DEACTIVATE;
 
   const { justification } = await inquirer.prompt<{ justification: string }>([
     {
@@ -278,10 +285,10 @@ const promptForDurationHours = async (defaultValue?: number): Promise<number | u
       type: "number",
       name: "durationHours",
       message: chalk.cyan("Activation duration hours (1-8):"),
-      default: defaultValue ?? 8,
+      default: defaultValue ?? DEFAULT_DURATION_HOURS,
       validate: (value) => {
         const n = Number(value);
-        if (!Number.isFinite(n) || n < 1 || n > 8) return chalk.red("Enter a number between 1 and 8.");
+        if (!Number.isFinite(n) || n < DURATION_MIN_HOURS || n > DURATION_MAX_HOURS) return chalk.red("Enter a number between 1 and 8.");
         return true;
       },
     },

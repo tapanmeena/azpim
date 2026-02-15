@@ -4,6 +4,7 @@
 
 export const DEFAULT_JUSTIFICATION_ACTIVATE = "Activated via azpim";
 export const DEFAULT_JUSTIFICATION_DEACTIVATE = "Deactivated via azpim";
+export const DEFAULT_DURATION_HOURS = 8;
 
 // ===============================
 // Duration Range

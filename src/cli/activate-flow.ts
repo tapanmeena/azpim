@@ -2,7 +2,7 @@ import chalk from "chalk";
 import inquirer from "inquirer";
 import type { AuthContext } from "../azure/auth";
 import { activateAzureRole, fetchEligibleRolesForSubscription } from "../azure/azure-pim";
-import { DEFAULT_JUSTIFICATION_ACTIVATE, DURATION_MAX_HOURS } from "../core/constants";
+import { DEFAULT_DURATION_HOURS, DEFAULT_JUSTIFICATION_ACTIVATE, DURATION_MAX_HOURS, DURATION_MIN_HOURS } from "../core/constants";
 import { extractErrorMessage } from "../core/errors";
 import {
   displayResultsSummary,
@@ -351,10 +351,10 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
         type: "number",
         name: "durationHours",
         message: chalk.cyan("Duration (hours, max 8):"),
-        default: 8,
+        default: DEFAULT_DURATION_HOURS,
         validate: (value) => {
           if (!value) return chalk.red("Please enter a valid number.");
-          if (value >= 1 && value <= 8) return true;
+          if (value >= DURATION_MIN_HOURS && value <= DURATION_MAX_HOURS) return true;
           return chalk.red("Please enter a value between 1 and 8.");
         },
       },
@@ -362,7 +362,7 @@ export const handleActivation = async (authContext: AuthContext): Promise<void> 
         type: "input",
         name: "justification",
         message: chalk.cyan("Justification for activation:"),
-        default: "Activated via azpim",
+        default: DEFAULT_JUSTIFICATION_ACTIVATE,
         validate: (value) => {
           if (value.trim().length >= 5) return true;
           return chalk.red("Justification should be at least 5 characters long.");
