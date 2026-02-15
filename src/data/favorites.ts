@@ -1,6 +1,3 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-
 import { loadJsonFile, saveJsonFile } from "../core/json-store";
 import { ENV_FAVORITES_PATH, getUserDataPath } from "../core/paths";
 
@@ -152,10 +149,7 @@ export const exportFavorites = async (data: FavoritesFile, outputPath: string, s
     })),
   };
 
-  const dir = path.dirname(outputPath);
-  await mkdir(dir, { recursive: true });
-  const payload = JSON.stringify(exportData, null, 2);
-  await writeFile(outputPath, `${payload}\n`, "utf8");
+  await saveJsonFile(outputPath, exportData);
 };
 
 export type ImportResult = {
@@ -169,14 +163,25 @@ export const importFavorites = async (
   inputPath: string,
   merge: boolean = true,
 ): Promise<{ data: FavoritesFile; result: ImportResult }> => {
-  const raw = await readFile(inputPath, "utf8");
-  const json = JSON.parse(raw) as unknown;
+  const loaded = await loadJsonFile<Record<string, unknown>>(inputPath, {
+    normalize: (json) => {
+      if (!json || typeof json !== "object" || Array.isArray(json)) {
+        return null;
+      }
+      return json as Record<string, unknown>;
+    },
+    label: "Invalid favorites import file JSON",
+  });
 
-  if (!json || typeof json !== "object") {
+  if (!loaded.exists) {
+    throw new Error(`Favorites import file not found at ${inputPath}`);
+  }
+
+  if (!loaded.data) {
     throw new Error(`Invalid favorites import file at ${inputPath}`);
   }
 
-  const importFile = json as Record<string, unknown>;
+  const importFile = loaded.data;
   let importedIds: string[] = [];
 
   // Support both export format and simple format
