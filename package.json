@@ -1,6 +1,6 @@
 {
   "name": "azpim",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Terminal app to manage Azure PIM role activations",
   "main": "dist/index.js",
   "bin": {
