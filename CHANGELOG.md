@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.6.0](https://github.com/tapanmeena/azpim/compare/v1.5.0...v1.6.0) (2026-02-15)
+
+
+### Features
+
+* add subscription cache management and update check functionality ([3e8d305](https://github.com/tapanmeena/azpim/commit/3e8d3052991743f0206f877d1ff537198d85de8f))
+* update duration handling in activation flow with constants for default values and validation ([d27f5a0](https://github.com/tapanmeena/azpim/commit/d27f5a0d6b0b7c31fd6b927fc0f8c88c97de8ef3))
+
 ## [1.5.0](https://github.com/tapanmeena/azpim/compare/v1.4.0...v1.5.0) (2026-02-03)
 
 
