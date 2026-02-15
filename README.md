@@ -4,6 +4,7 @@ A command-line interface tool for managing Azure Privileged Identity Management 
 
 ![Terminal UI](https://img.shields.io/badge/Terminal-UI-cyan)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)
+[![npm](https://img.shields.io/npm/v/azpim)](https://www.npmjs.com/package/azpim)
 ![License](https://img.shields.io/badge/License-ISC-green)
 
 ## Features
