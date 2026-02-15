@@ -1,7 +1,7 @@
 import { AuthorizationManagementClient } from "@azure/arm-authorization";
 import { SubscriptionClient } from "@azure/arm-resources-subscriptions";
 import { AzureCliCredential } from "@azure/identity";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "node:crypto";
 import { PIM_FILTER_AS_TARGET } from "../core/constants";
 
 import {
@@ -253,7 +253,7 @@ export const activateAzureRole = async (
     subscriptionId,
   });
   const client = new AuthorizationManagementClient(credential, subscriptionId);
-  const requestName = uuidv4();
+  const requestName = randomUUID();
   const now = new Date();
   const durationISO = `PT${request.durationHours}H`;
 
@@ -343,7 +343,7 @@ export const deactivateAzureRole = async (credential: AzureCliCredential, reques
     subscriptionId,
   });
   const client = new AuthorizationManagementClient(credential, subscriptionId);
-  const requestName = uuidv4();
+  const requestName = randomUUID();
   const displayName = roleName || "role";
 
   logDebug("Submitting deactivation request", {

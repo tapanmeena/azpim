@@ -1,15 +1,12 @@
 import { AzureCliCredential } from "@azure/identity";
-import { Client } from "@microsoft/microsoft-graph-client";
-import { TokenCredentialAuthenticationProvider } from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { failSpinner, logDebug, showUserInfo, startSpinner, succeedSpinner } from "../core/ui";
 
-export const GRAPH_SCOPES = ["https://graph.microsoft.com/.default"];
+const GRAPH_SCOPE = "https://graph.microsoft.com/.default";
 
 export interface AuthContext {
   credential: AzureCliCredential;
-  graphClient: Client;
   userId: string;
   userPrincipalName: string;
 }
@@ -44,30 +41,32 @@ export const authenticate = async (): Promise<AuthContext> => {
     logDebug("Creating AzureCliCredential...");
     const credential = getCredential();
 
-    // Create Microsoft Graph client
-    logDebug("Creating Microsoft Graph client...", { scopes: GRAPH_SCOPES });
-    const authProvider = new TokenCredentialAuthenticationProvider(credential, {
-      scopes: GRAPH_SCOPES,
-    });
-
-    const graphClient = Client.initWithMiddleware({
-      authProvider,
-      defaultVersion: "v1.0",
-    });
-
-    // Get user details
+    // Get token and call Microsoft Graph /me directly
+    logDebug("Fetching token for Microsoft Graph...");
+    const tokenResponse = await credential.getToken(GRAPH_SCOPE);
     logDebug("Calling Microsoft Graph /me endpoint...");
-    const user = await graphClient.api("/me").header("Accept-Language", "en-US").select("id,userPrincipalName,displayName").get();
-    const userId = user.id;
-    const userPrincipalName = user.userPrincipalName;
+    const res = await fetch("https://graph.microsoft.com/v1.0/me?$select=id,userPrincipalName,displayName", {
+      headers: {
+        Authorization: `Bearer ${tokenResponse.token}`,
+        "Accept-Language": "en-US",
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Microsoft Graph /me request failed: ${res.status} ${res.statusText}`);
+    }
+
+    const user = (await res.json()) as Record<string, unknown>;
+    const userId = user.id as string;
+    const userPrincipalName = user.userPrincipalName as string;
     logDebug("User details retrieved", { userId, userPrincipalName });
 
     succeedSpinner("Authentication successful");
-    showUserInfo(user.displayName, userPrincipalName);
+    showUserInfo(user.displayName as string, userPrincipalName);
 
     return {
       credential,
-      graphClient,
       userId,
       userPrincipalName,
     };

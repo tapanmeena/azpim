@@ -37,7 +37,6 @@
     "@azure/arm-resources-subscriptions": "^2.1.0",
     "@azure/identity": "^4.13.0",
     "@inquirer/search": "^4.1.0",
-    "@microsoft/microsoft-graph-client": "^3.0.7",
     "boxen": "^8.0.1",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
@@ -45,14 +44,10 @@
     "figures": "^6.1.0",
     "gradient-string": "^3.0.0",
     "inquirer": "^13.2.1",
-    "isomorphic-fetch": "^3.0.0",
-    "ora": "^9.1.0",
-    "uuid": "^13.0.0"
+    "ora": "^9.1.0"
   },
   "devDependencies": {
-    "@types/inquirer": "^9.0.9",
     "@types/node": "^25.0.10",
-    "esbuild": "^0.27.2",
     "standard-version": "^9.5.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",

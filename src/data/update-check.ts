@@ -1,5 +1,3 @@
-import "isomorphic-fetch";
-
 import path from "node:path";
 
 import { loadJsonFile, saveJsonFile } from "../core/json-store";
