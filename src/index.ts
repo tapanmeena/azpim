@@ -9,7 +9,7 @@ import { type AuthenticatedCommandContext, withCommandHandler } from "./cli/comm
 import { runPresetAddWizard, runPresetEditWizard } from "./cli/presets-cli";
 import { handleCommandError, type OutputFormat } from "./core/errors";
 import { migrateGlobalFilesToUser } from "./core/paths";
-import { configureUi, logBlank, logDim, logInfo, logSuccess, logWarning, showHeader } from "./core/ui";
+import { configureUi, displayFavoritesTable, logBlank, logDim, logInfo, logSuccess, logWarning, showHeader } from "./core/ui";
 import {
   addFavorite,
   clearFavorites,
@@ -745,10 +745,12 @@ favoritesCommand
         logWarning("No favorites configured yet.");
         logDim("Add favorites with: azpim favorites add <subscriptionId>");
       } else {
-        for (const id of favoriteIds) {
-          const name = subscriptionNames.get(id) || "(name not cached)";
-          console.log(`  ★ ${name} (${id})`);
-        }
+        displayFavoritesTable(
+          favoriteIds.map((id) => ({
+            name: subscriptionNames.get(id) || "(name not cached)",
+            subscriptionId: id,
+          })),
+        );
       }
       logBlank();
     }),

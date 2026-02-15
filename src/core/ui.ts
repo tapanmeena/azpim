@@ -1,6 +1,39 @@
+import boxen from "boxen";
 import chalk from "chalk";
+import Table from "cli-table3";
+import figures from "figures";
+import gradient from "gradient-string";
 import ora, { type Ora } from "ora";
 import { version } from "../../package.json";
+
+// ===============================
+// Icons (cross-platform via `figures`)
+// ===============================
+
+export const icons = {
+  success: figures.tick,
+  error: figures.cross,
+  warning: figures.warning,
+  info: figures.info,
+  pointer: figures.play,
+  stop: figures.squareSmallFilled,
+  star: figures.star,
+  starEmpty: figures.star, // ☆ not available in figures; use different styling
+  back: figures.arrowLeft,
+  exit: figures.cross,
+  gear: figures.pointer, // ⚙ not in figures, use hamburger
+  bullet: figures.bullet,
+  add: figures.pointer,
+  remove: figures.line,
+  list: figures.hamburger,
+  edit: figures.pointer,
+  arrowDown: figures.arrowDown,
+  arrowUp: figures.arrowUp,
+  refresh: figures.radioOn,
+  search: figures.pointer,
+  key: figures.pointer,
+  wave: "\u{1F44B}",
+} as const;
 
 type UiOptions = {
   quiet: boolean;
@@ -150,7 +183,7 @@ export const stopSpinner = (): void => {
  */
 export const logInfo = (message: string): void => {
   if (isQuietMode()) return;
-  console.log(chalk.blue("ℹ"), chalk.blue(message));
+  console.log(chalk.blue(icons.info), chalk.blue(message));
 };
 
 /**
@@ -158,7 +191,7 @@ export const logInfo = (message: string): void => {
  */
 export const logSuccess = (message: string): void => {
   if (isQuietMode()) return;
-  console.log(chalk.green("✔"), chalk.green(message));
+  console.log(chalk.green(icons.success), chalk.green(message));
 };
 
 /**
@@ -166,7 +199,7 @@ export const logSuccess = (message: string): void => {
  */
 export const logError = (message: string): void => {
   if (isQuietMode()) return;
-  console.log(chalk.red("✖"), chalk.red(message));
+  console.log(chalk.red(icons.error), chalk.red(message));
 };
 
 /**
@@ -174,7 +207,7 @@ export const logError = (message: string): void => {
  */
 export const logWarning = (message: string): void => {
   if (isQuietMode()) return;
-  console.log(chalk.yellow("⚠"), chalk.yellow(message));
+  console.log(chalk.yellow(icons.warning), chalk.yellow(message));
 };
 
 /**
@@ -210,55 +243,48 @@ export const logBlank = (): void => {
 // UI Elements
 // ===============================
 
+// Gradient presets
+const headerGradient = gradient(["#3b82f6", "#06b6d4", "#8b5cf6"]);
+const dividerGradient = gradient(["#3b82f6", "#06b6d4", "#3b82f6"]);
+
 /**
  * Displays the application header/banner with gradient styling.
  */
 export const showHeader = (): void => {
   if (isQuietMode()) return;
 
-  const width = 54;
-  const margin = "  ";
-
-  // Gradient line using transitioning block characters
-  const gradientTop = margin + chalk.blueBright("▄".repeat(4)) + chalk.cyan("▄".repeat(width - 8)) + chalk.blueBright("▄".repeat(4));
-  const gradientBottom = margin + chalk.blueBright("▀".repeat(4)) + chalk.cyan("▀".repeat(width - 8)) + chalk.blueBright("▀".repeat(4));
-
-  // ASCII art style title
   const asciiArt = [
-    "         █████╗ ███████╗██████╗ ██╗███╗   ███╗",
-    "        ██╔══██╗╚══███╔╝██╔══██╗██║████╗ ████║",
-    "        ███████║  ███╔╝ ██████╔╝██║██╔████╔██║",
-    "        ██╔══██║ ███╔╝  ██╔═══╝ ██║██║╚██╔╝██║",
-    "        ██║  ██║███████╗██║     ██║██║ ╚═╝ ██║",
-    "        ╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝     ╚═╝",
-  ];
+    " █████╗ ███████╗██████╗ ██╗███╗   ███╗",
+    "██╔══██╗╚══███╔╝██╔══██╗██║████╗ ████║",
+    "███████║  ███╔╝ ██████╔╝██║██╔████╔██║",
+    "██╔══██║ ███╔╝  ██╔═══╝ ██║██║╚██╔╝██║",
+    "██║  ██║███████╗██║     ██║██║ ╚═╝ ██║",
+    "╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝     ╚═╝",
+  ].join("\n");
 
-  const tagline = `v${version} • Activate & manage your Azure roles`;
-  const centeredTagline = margin + tagline.padStart(Math.floor((width + tagline.length) / 2)).padEnd(width);
-
-  logBlank();
-  console.log(gradientTop);
-  logBlank();
-
-  for (const line of asciiArt) {
-    console.log(chalk.bold.cyanBright(margin + line));
-  }
+  const tagline = chalk.dim(`v${version} ${icons.bullet} Activate & manage your Azure roles`);
+  const content = headerGradient.multiline(asciiArt) + "\n" + tagline;
 
   logBlank();
-  console.log(chalk.dim(centeredTagline));
-  logBlank();
-  console.log(gradientBottom);
+  console.log(
+    boxen(content, {
+      padding: { top: 1, bottom: 1, left: 3, right: 3 },
+      margin: { top: 0, bottom: 0, left: 1, right: 0 },
+      borderStyle: "round",
+      borderColor: "cyan",
+      textAlignment: "center",
+    }),
+  );
   logBlank();
 };
 
 /**
- * Displays a section divider
+ * Displays a section divider with gradient styling.
  */
 export const showDivider = (): void => {
   if (isQuietMode()) return;
   const width = 54;
-  const divider = chalk.blueBright("─".repeat(4)) + chalk.cyan("─".repeat(width - 8)) + chalk.blueBright("─".repeat(4));
-  console.log("  " + divider);
+  console.log("  " + dividerGradient("─".repeat(width)));
 };
 
 /**
@@ -314,15 +340,15 @@ export const formatStatus = (status: string): string => {
     case "approved":
     case "provisioned":
     case "activated":
-      return chalk.green.bold(`✔ ${status}`);
+      return chalk.green.bold(`${icons.success} ${status}`);
     case "denied":
     case "failed":
-      return chalk.red.bold(`✖ ${status}`);
+      return chalk.red.bold(`${icons.error} ${status}`);
     case "pendingapproval":
     case "pending":
-      return chalk.yellow.bold(`⏳ ${status}`);
+      return chalk.yellow.bold(`${figures.circleDotted} ${status}`);
     default:
-      return chalk.cyanBright.bold(`ℹ ${status}`);
+      return chalk.cyanBright.bold(`${icons.info} ${status}`);
   }
 };
 
@@ -357,36 +383,19 @@ export const showSummary = (title: string, items: { label: string; value: string
 export const showUserInfo = (displayName: string, email: string): void => {
   if (isQuietMode()) return;
 
-  const width = 54;
-  const margin = "  ";
-  const innerWidth = width - 2; // Account for left and right borders
-
-  // Gradient borders
-  const topBorder = chalk.blueBright("╭" + "─".repeat(2)) + chalk.cyan("─".repeat(width - 6)) + chalk.blueBright("─".repeat(2) + "╮");
-  const bottomBorder = chalk.blueBright("╰" + "─".repeat(2)) + chalk.cyan("─".repeat(width - 6)) + chalk.blueBright("─".repeat(2) + "╯");
-
-  // Fixed-width content lines (no emoji - they have inconsistent widths)
-  const titleText = "Authenticated User";
-  const titlePadding = innerWidth - titleText.length - 3; // 3 for " ● "
-  const titleLine = ` ${chalk.cyanBright("●")} ${chalk.cyanBright.bold(titleText)}${" ".repeat(titlePadding)}`;
-
-  const nameLabel = "Name:  ";
-  const namePadding = innerWidth - 5 - nameLabel.length - displayName.length; // 5 for "   • "
-  const nameLine = `   ${chalk.blueBright("•")} ${chalk.dim(nameLabel)}${chalk.white.bold(displayName)}${" ".repeat(Math.max(0, namePadding))}`;
-
-  const emailLabel = "Email: ";
-  const emailPadding = innerWidth - 5 - emailLabel.length - email.length; // 5 for "   • "
-  const emailLine = `   ${chalk.blueBright("•")} ${chalk.dim(emailLabel)}${chalk.cyan(email)}${" ".repeat(Math.max(0, emailPadding))}`;
-
-  const separatorLine = chalk.dim("─".repeat(innerWidth));
+  const content = [`${chalk.dim("Name:")}  ${chalk.white.bold(displayName)}`, `${chalk.dim("Email:")} ${chalk.cyan(email)}`].join("\n");
 
   logBlank();
-  console.log(margin + topBorder);
-  console.log(margin + chalk.blueBright("│") + titleLine + chalk.blueBright("│"));
-  console.log(margin + chalk.blueBright("│") + separatorLine + chalk.blueBright("│"));
-  console.log(margin + chalk.blueBright("│") + nameLine + chalk.blueBright("│"));
-  console.log(margin + chalk.blueBright("│") + emailLine + chalk.blueBright("│"));
-  console.log(margin + bottomBorder);
+  console.log(
+    boxen(content, {
+      title: chalk.cyanBright.bold("Authenticated User"),
+      titleAlignment: "center",
+      padding: { top: 0, bottom: 0, left: 2, right: 2 },
+      margin: { top: 0, bottom: 0, left: 1, right: 0 },
+      borderStyle: "round",
+      borderColor: "blueBright",
+    }),
+  );
   logBlank();
 };
 
@@ -431,4 +440,88 @@ export const displayResultsSummary = (successCount: number, failCount: number, a
   } else {
     logError(`All ${failCount} role ${actionVerb.replace(/d$/, "")}(s) failed.`);
   }
+};
+
+// ===============================
+// Table Helpers
+// ===============================
+
+/**
+ * Displays a table of presets.
+ */
+export const displayPresetsTable = (
+  presets: Array<{
+    name: string;
+    description?: string;
+    commands: string;
+    isDefault: boolean;
+  }>,
+): void => {
+  if (isQuietMode()) return;
+  const table = new Table({
+    head: [chalk.cyan.bold("Name"), chalk.cyan.bold("Description"), chalk.cyan.bold("Commands"), chalk.cyan.bold("Default")],
+    style: { head: [], border: ["dim"] },
+    chars: {
+      top: "─",
+      "top-mid": "┬",
+      "top-left": "┌",
+      "top-right": "┐",
+      bottom: "─",
+      "bottom-mid": "┴",
+      "bottom-left": "└",
+      "bottom-right": "┘",
+      left: "│",
+      "left-mid": "├",
+      mid: "─",
+      "mid-mid": "┼",
+      right: "│",
+      "right-mid": "┤",
+      middle: "│",
+    },
+  });
+
+  for (const preset of presets) {
+    table.push([
+      chalk.white.bold(preset.name),
+      chalk.dim(preset.description || "—"),
+      chalk.cyan(preset.commands),
+      preset.isDefault ? chalk.green.bold(icons.success) : chalk.dim("—"),
+    ]);
+  }
+
+  console.log(table.toString());
+};
+
+/**
+ * Displays a table of favorite subscriptions.
+ */
+export const displayFavoritesTable = (favorites: Array<{ name: string; subscriptionId: string }>): void => {
+  if (isQuietMode()) return;
+  const table = new Table({
+    head: ["", chalk.cyan.bold("Subscription Name"), chalk.cyan.bold("Subscription ID")],
+    style: { head: [], border: ["dim"] },
+    chars: {
+      top: "─",
+      "top-mid": "┬",
+      "top-left": "┌",
+      "top-right": "┐",
+      bottom: "─",
+      "bottom-mid": "┴",
+      "bottom-left": "└",
+      "bottom-right": "┘",
+      left: "│",
+      "left-mid": "├",
+      mid: "─",
+      "mid-mid": "┼",
+      right: "│",
+      "right-mid": "┤",
+      middle: "│",
+    },
+  });
+
+  for (const fav of favorites) {
+    table.push([chalk.yellow(icons.star), chalk.cyanBright.bold(fav.name), chalk.dim(fav.subscriptionId)]);
+  }
+
+  console.log(table.toString());
 };

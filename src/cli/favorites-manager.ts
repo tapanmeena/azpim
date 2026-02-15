@@ -3,7 +3,7 @@ import inquirer from "inquirer";
 import type { AuthContext } from "../azure/auth";
 import { fetchSubscriptions } from "../azure/azure-pim";
 import { extractErrorMessage } from "../core/errors";
-import { formatSubscription, logBlank, logDim, logError, logInfo, logSuccess, logWarning } from "../core/ui";
+import { displayFavoritesTable, formatSubscription, icons, logBlank, logDim, logError, logInfo, logSuccess, logWarning } from "../core/ui";
 import {
   addFavorite,
   clearFavorites,
@@ -45,30 +45,42 @@ export const runFavoritesManager = async (authContext: AuthContext): Promise<voi
         name: "action",
         message: chalk.cyan("Favorites Menu:"),
         choices: [
-          { name: chalk.cyanBright("📋 View/Edit Favorites"), value: "view" },
           {
-            name: chalk.green("➕ Add Favorites from Subscriptions"),
+            name: chalk.cyanBright(`${icons.list} View/Edit Favorites`),
+            value: "view",
+          },
+          {
+            name: chalk.green(`${icons.add} Add Favorites from Subscriptions`),
             value: "add",
           },
           {
-            name: chalk.green("🔢 Add Favorite by Subscription ID"),
+            name: chalk.green(`${icons.key} Add Favorite by Subscription ID`),
             value: "addById",
           },
-          { name: chalk.yellow("➖ Remove Favorites"), value: "remove" },
-          { name: chalk.red("🗑  Clear All Favorites"), value: "clear" },
+          {
+            name: chalk.yellow(`${icons.remove} Remove Favorites`),
+            value: "remove",
+          },
+          {
+            name: chalk.red(`${icons.error} Clear All Favorites`),
+            value: "clear",
+          },
           separator(),
           {
-            name: chalk.blue("📥 Import Favorites from File"),
+            name: chalk.blue(`${icons.arrowDown} Import Favorites from File`),
             value: "import",
           },
-          { name: chalk.blue("📤 Export Favorites to File"), value: "export" },
+          {
+            name: chalk.blue(`${icons.arrowUp} Export Favorites to File`),
+            value: "export",
+          },
           separator(),
           {
-            name: chalk.magenta("🔄 Refresh Subscription Cache"),
+            name: chalk.magenta(`${icons.refresh} Refresh Subscription Cache`),
             value: "refresh",
           },
           separator(),
-          { name: chalk.dim("↩ Back to Main Menu"), value: "back" },
+          { name: chalk.dim(`${icons.back} Back to Main Menu`), value: "back" },
         ],
         pageSize: 15,
       },
@@ -86,10 +98,12 @@ export const runFavoritesManager = async (authContext: AuthContext): Promise<voi
         }
         logBlank();
         logInfo("Current Favorites:");
-        for (const id of favoriteIds) {
-          const name = subscriptionNames.get(id) || "(name not cached)";
-          console.log(`  ${chalk.yellow("★")} ${chalk.cyanBright(name)} ${chalk.dim(`(${id})`)}`);
-        }
+        displayFavoritesTable(
+          favoriteIds.map((id) => ({
+            name: subscriptionNames.get(id) || "(name not cached)",
+            subscriptionId: id,
+          })),
+        );
         logBlank();
         break;
       }
@@ -205,7 +219,7 @@ export const runFavoritesManager = async (authContext: AuthContext): Promise<voi
             choices: favoriteIds.map((id) => {
               const name = subscriptionNames.get(id) || "(name not cached)";
               return {
-                name: `${chalk.yellow("★")} ${chalk.cyanBright(name)} ${chalk.dim(`(${id})`)}`,
+                name: `${chalk.yellow(icons.star)} ${chalk.cyanBright(name)} ${chalk.dim(`(${id})`)}`,
                 value: id,
               };
             }),

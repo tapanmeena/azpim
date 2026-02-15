@@ -9,7 +9,7 @@ import chalk from "chalk";
 import inquirer from "inquirer";
 import { authenticate, type AuthContext } from "../azure/auth";
 import { fetchEligibleRolesForSubscription, fetchSubscriptions } from "../azure/azure-pim";
-import { formatSubscription, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showDivider } from "../core/ui";
+import { displayPresetsTable, formatSubscription, icons, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showDivider } from "../core/ui";
 import type { ActivatePresetOptions, DeactivatePresetOptions, PresetCommandName, PresetEntry, PresetsFile } from "../data/presets";
 import { getPreset, listPresetNames, loadPresets, removePreset, savePresets, setDefaultPresetName, upsertPreset } from "../data/presets";
 
@@ -543,13 +543,16 @@ export const runPresetsManager = async (authContext: AuthContext): Promise<void>
         name: "action",
         message: chalk.cyan.bold("Presets Manager"),
         choices: [
-          { name: chalk.white("≡ List presets"), value: "list" },
-          { name: chalk.green("+ Add preset"), value: "add" },
-          { name: chalk.yellow("✎ Edit preset"), value: "edit" },
-          { name: chalk.red("– Remove preset"), value: "remove" },
-          { name: chalk.magenta("⚙ Set defaults"), value: "defaults" },
-          { name: chalk.dim("↩ Back to Main Menu"), value: "back" },
-          { name: chalk.red("✕ Exit"), value: "exit" },
+          { name: chalk.white(`${icons.list} List presets`), value: "list" },
+          { name: chalk.green(`${icons.add} Add preset`), value: "add" },
+          { name: chalk.yellow(`${icons.edit} Edit preset`), value: "edit" },
+          { name: chalk.red(`${icons.remove} Remove preset`), value: "remove" },
+          {
+            name: chalk.magenta(`${icons.gear} Set defaults`),
+            value: "defaults",
+          },
+          { name: chalk.dim(`${icons.back} Back to Main Menu`), value: "back" },
+          { name: chalk.red(`${icons.exit} Exit`), value: "exit" },
         ],
         default: "list",
       },
@@ -566,15 +569,22 @@ export const runPresetsManager = async (authContext: AuthContext): Promise<void>
             const defaultActivate = presets.data.defaults?.activatePreset;
             const defaultDeactivate = presets.data.defaults?.deactivatePreset;
             logInfo(`Presets file: ${presets.filePath}`);
-            for (const name of names) {
+            logBlank();
+
+            const tableData = names.map((name) => {
               const entry = getPreset(presets.data, name);
-              const tags: string[] = [];
-              if (name === defaultActivate) tags.push("default-activate");
-              if (name === defaultDeactivate) tags.push("default-deactivate");
-              logBlank();
-              logInfo(`- ${name}${tags.length ? ` (${tags.join(", ")})` : ""}`);
-              if (entry?.description) logDim(`  ${entry.description}`);
-            }
+              const commands: string[] = [];
+              if (entry?.activate) commands.push("activate");
+              if (entry?.deactivate) commands.push("deactivate");
+              const isDefault = name === defaultActivate || name === defaultDeactivate;
+              return {
+                name,
+                description: entry?.description,
+                commands: commands.join(", ") || "—",
+                isDefault,
+              };
+            });
+            displayPresetsTable(tableData);
           }
           break;
         }
@@ -705,7 +715,7 @@ export const runPresetsManager = async (authContext: AuthContext): Promise<void>
 
         case "exit":
           logBlank();
-          logDim("Goodbye! 👋");
+          logDim(`Goodbye! ${icons.wave}`);
           logBlank();
           process.exit(0);
       }

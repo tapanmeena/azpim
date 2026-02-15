@@ -7,6 +7,7 @@ import { extractErrorMessage } from "../core/errors";
 import {
   displayResultsSummary,
   formatActiveRole,
+  icons,
   logBlank,
   logDebug,
   logError,
@@ -347,7 +348,10 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
         name: "rolesToDeactivate",
         message: chalk.cyan("Select role(s) to deactivate:"),
         choices: [
-          { name: chalk.dim("↩ Back to Main Menu"), value: SENTINEL_BACK },
+          {
+            name: chalk.dim(`${icons.back} Back to Main Menu`),
+            value: SENTINEL_BACK,
+          },
           ...activeAzureRoles.map((role) => ({
             name: formatActiveRole(role.roleName, role.scopeDisplayName, role.subscriptionName, role.startDateTime),
             value: role.id,

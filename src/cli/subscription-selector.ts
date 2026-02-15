@@ -9,6 +9,7 @@ import {
   formatFavoriteSubscription,
   formatNonFavoriteSubscription,
   formatSubscription,
+  icons,
   logDim,
   logInfo,
   logSuccess,
@@ -82,7 +83,10 @@ const buildSubscriptionChoices = (subscriptions: AzureSubscription[], favoriteId
   }
 
   choices.push(separator());
-  choices.push({ name: chalk.dim("↩ Back to Main Menu"), value: BACK_VALUE });
+  choices.push({
+    name: chalk.dim(`${icons.back} Back to Main Menu`),
+    value: BACK_VALUE,
+  });
 
   return choices;
 };
@@ -117,7 +121,7 @@ export const selectSubscriptionWithSearch = async (
     });
 
     searchableItems.push({
-      name: chalk.dim("↩ Back to Main Menu"),
+      name: chalk.dim(`${icons.back} Back to Main Menu`),
       value: BACK_VALUE,
       displayName: "Back",
       isFavorite: false,
@@ -203,8 +207,11 @@ export const selectSubscriptionInteractive = async (authContext: AuthContext): P
             name: chalk.cyan("Enter subscription ID manually"),
             value: "enter",
           },
-          { name: chalk.cyan("↩ Back to Main Menu"), value: "back" },
-          { name: chalk.red("✕ Exit"), value: "exit" },
+          {
+            name: chalk.cyan(`${icons.back} Back to Main Menu`),
+            value: "back",
+          },
+          { name: chalk.red(`${icons.exit} Exit`), value: "exit" },
         ],
         default: "enter",
       },
@@ -213,7 +220,7 @@ export const selectSubscriptionInteractive = async (authContext: AuthContext): P
     if (action === "back") {
       return null;
     } else if (action === "exit") {
-      logDim("Goodbye! 👋");
+      logDim(`Goodbye! ${icons.wave}`);
       process.exit(0);
     }
 
@@ -251,8 +258,8 @@ export const selectSubscriptionInteractive = async (authContext: AuthContext): P
       type: "confirm",
       name: "toggleFav",
       message: isCurrentlyFavorite
-        ? chalk.yellow(`☆ Remove "${result.displayName}" from favorites?`)
-        : chalk.yellow(`★ Add "${result.displayName}" to favorites?`),
+        ? chalk.yellow(`${icons.star} Remove "${result.displayName}" from favorites?`)
+        : chalk.yellow(`${icons.star} Add "${result.displayName}" to favorites?`),
       default: false,
     },
   ]);
