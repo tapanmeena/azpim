@@ -1,14 +1,14 @@
+import chalk from "chalk";
+import inquirer from "inquirer";
+import { authenticate, type AuthContext } from "../azure/auth";
+import { fetchEligibleRolesForSubscription, fetchSubscriptions } from "../azure/azure-pim";
 import {
   DEFAULT_DURATION_HOURS,
   DEFAULT_JUSTIFICATION_ACTIVATE,
   DEFAULT_JUSTIFICATION_DEACTIVATE,
   DURATION_MAX_HOURS,
   DURATION_MIN_HOURS,
-} from "@/core/constants";
-import chalk from "chalk";
-import inquirer from "inquirer";
-import { authenticate, type AuthContext } from "../azure/auth";
-import { fetchEligibleRolesForSubscription, fetchSubscriptions } from "../azure/azure-pim";
+} from "../core/constants";
 import { displayPresetsTable, formatSubscription, icons, logBlank, logDim, logError, logInfo, logSuccess, logWarning, showDivider } from "../core/ui";
 import type { ActivatePresetOptions, DeactivatePresetOptions, PresetCommandName, PresetEntry, PresetsFile } from "../data/presets";
 import { getPreset, listPresetNames, loadPresets, removePreset, savePresets, setDefaultPresetName, upsertPreset } from "../data/presets";
