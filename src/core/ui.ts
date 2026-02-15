@@ -1,10 +1,78 @@
-import boxen from "boxen";
 import chalk from "chalk";
-import Table from "cli-table3";
 import figures from "figures";
 import gradient from "gradient-string";
 import ora, { type Ora } from "ora";
 import { version } from "../../package.json";
+
+// ===============================
+// Box Drawing Helper (replaces boxen)
+// ===============================
+
+const drawBox = (
+  content: string,
+  options: {
+    padding?: { top?: number; bottom?: number; left?: number; right?: number };
+    margin?: { left?: number };
+    borderColor?: (s: string) => string;
+    title?: string;
+    centerText?: boolean;
+  } = {},
+): string => {
+  const pad = { top: 0, bottom: 0, left: 1, right: 1, ...options.padding };
+  const marginLeft = " ".repeat(options.margin?.left ?? 0);
+  const colorize = options.borderColor ?? ((s: string) => s);
+
+  const lines = content.split("\n");
+  // Strip ANSI for width calculation
+  const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+  const contentWidth = Math.max(...lines.map((l) => stripAnsi(l).length)) + pad.left + pad.right;
+
+  const padLeft = " ".repeat(pad.left);
+  const padRight = " ".repeat(pad.right);
+  const emptyLine = " ".repeat(contentWidth);
+
+  const result: string[] = [];
+
+  // Top border
+  if (options.title) {
+    const titleStr = ` ${options.title} `;
+    const titleLen = stripAnsi(titleStr).length;
+    const remaining = contentWidth - titleLen;
+    const leftDash = Math.floor(remaining / 2);
+    const rightDash = remaining - leftDash;
+    result.push(marginLeft + colorize("╭" + "─".repeat(leftDash)) + titleStr + colorize("─".repeat(rightDash) + "╮"));
+  } else {
+    result.push(marginLeft + colorize("╭" + "─".repeat(contentWidth) + "╮"));
+  }
+
+  // Top padding
+  for (let i = 0; i < pad.top; i++) {
+    result.push(marginLeft + colorize("│") + emptyLine + colorize("│"));
+  }
+
+  // Content lines
+  for (const line of lines) {
+    const visibleLen = stripAnsi(line).length;
+    const totalPad = contentWidth - pad.left - pad.right - visibleLen;
+    if (options.centerText) {
+      const leftPad = Math.floor(totalPad / 2);
+      const rightPad = totalPad - leftPad;
+      result.push(marginLeft + colorize("│") + padLeft + " ".repeat(leftPad) + line + " ".repeat(rightPad) + padRight + colorize("│"));
+    } else {
+      result.push(marginLeft + colorize("│") + padLeft + line + " ".repeat(Math.max(0, totalPad)) + padRight + colorize("│"));
+    }
+  }
+
+  // Bottom padding
+  for (let i = 0; i < pad.bottom; i++) {
+    result.push(marginLeft + colorize("│") + emptyLine + colorize("│"));
+  }
+
+  // Bottom border
+  result.push(marginLeft + colorize("╰" + "─".repeat(contentWidth) + "╯"));
+
+  return result.join("\n");
+};
 
 // ===============================
 // Icons (cross-platform via `figures`)
@@ -267,12 +335,11 @@ export const showHeader = (): void => {
 
   logBlank();
   console.log(
-    boxen(content, {
+    drawBox(content, {
       padding: { top: 1, bottom: 1, left: 3, right: 3 },
-      margin: { top: 0, bottom: 0, left: 1, right: 0 },
-      borderStyle: "round",
-      borderColor: "cyan",
-      textAlignment: "center",
+      margin: { left: 1 },
+      borderColor: chalk.cyan,
+      centerText: true,
     }),
   );
   logBlank();
@@ -387,13 +454,11 @@ export const showUserInfo = (displayName: string, email: string): void => {
 
   logBlank();
   console.log(
-    boxen(content, {
+    drawBox(content, {
       title: chalk.cyanBright.bold("Authenticated User"),
-      titleAlignment: "center",
       padding: { top: 0, bottom: 0, left: 2, right: 2 },
-      margin: { top: 0, bottom: 0, left: 1, right: 0 },
-      borderStyle: "round",
-      borderColor: "blueBright",
+      margin: { left: 1 },
+      borderColor: chalk.blueBright,
     }),
   );
   logBlank();
@@ -446,6 +511,41 @@ export const displayResultsSummary = (successCount: number, failCount: number, a
 // Table Helpers
 // ===============================
 
+const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
+
+const drawTable = (headers: string[], rows: string[][]): string => {
+  // Calculate column widths
+  const colWidths = headers.map((h, i) => {
+    const headerLen = stripAnsi(h).length;
+    const maxDataLen = rows.reduce((max, row) => Math.max(max, stripAnsi(row[i] ?? "").length), 0);
+    return Math.max(headerLen, maxDataLen) + 2; // 1 space padding each side
+  });
+
+  const drawLine = (left: string, mid: string, right: string, fill: string): string =>
+    chalk.dim(left + colWidths.map((w) => fill.repeat(w)).join(mid) + right);
+
+  const drawRow = (cells: string[]): string =>
+    chalk.dim("│") +
+    cells
+      .map((cell, i) => {
+        const visible = stripAnsi(cell).length;
+        const pad = (colWidths[i] ?? 0) - visible - 1;
+        return " " + cell + " ".repeat(Math.max(0, pad));
+      })
+      .join(chalk.dim("│")) +
+    chalk.dim("│");
+
+  const lines: string[] = [];
+  lines.push(drawLine("╭", "┬", "╮", "─"));
+  lines.push(drawRow(headers));
+  lines.push(drawLine("├", "┼", "┤", "─"));
+  for (const row of rows) {
+    lines.push(drawRow(row));
+  }
+  lines.push(drawLine("╰", "┴", "╯", "─"));
+  return lines.join("\n");
+};
+
 /**
  * Displays a table of presets.
  */
@@ -458,38 +558,17 @@ export const displayPresetsTable = (
   }>,
 ): void => {
   if (isQuietMode()) return;
-  const table = new Table({
-    head: [chalk.cyan.bold("Name"), chalk.cyan.bold("Description"), chalk.cyan.bold("Commands"), chalk.cyan.bold("Default")],
-    style: { head: [], border: ["dim"] },
-    chars: {
-      top: "─",
-      "top-mid": "┬",
-      "top-left": "┌",
-      "top-right": "┐",
-      bottom: "─",
-      "bottom-mid": "┴",
-      "bottom-left": "└",
-      "bottom-right": "┘",
-      left: "│",
-      "left-mid": "├",
-      mid: "─",
-      "mid-mid": "┼",
-      right: "│",
-      "right-mid": "┤",
-      middle: "│",
-    },
-  });
 
-  for (const preset of presets) {
-    table.push([
-      chalk.white.bold(preset.name),
-      chalk.dim(preset.description || "—"),
-      chalk.cyan(preset.commands),
-      preset.isDefault ? chalk.green.bold(icons.success) : chalk.dim("—"),
-    ]);
-  }
+  const headers = [chalk.cyan.bold("Name"), chalk.cyan.bold("Description"), chalk.cyan.bold("Commands"), chalk.cyan.bold("Default")];
 
-  console.log(table.toString());
+  const rows = presets.map((preset) => [
+    chalk.white.bold(preset.name),
+    chalk.dim(preset.description || "—"),
+    chalk.cyan(preset.commands),
+    preset.isDefault ? chalk.green.bold(icons.success) : chalk.dim("—"),
+  ]);
+
+  console.log(drawTable(headers, rows));
 };
 
 /**
@@ -497,31 +576,10 @@ export const displayPresetsTable = (
  */
 export const displayFavoritesTable = (favorites: Array<{ name: string; subscriptionId: string }>): void => {
   if (isQuietMode()) return;
-  const table = new Table({
-    head: ["", chalk.cyan.bold("Subscription Name"), chalk.cyan.bold("Subscription ID")],
-    style: { head: [], border: ["dim"] },
-    chars: {
-      top: "─",
-      "top-mid": "┬",
-      "top-left": "┌",
-      "top-right": "┐",
-      bottom: "─",
-      "bottom-mid": "┴",
-      "bottom-left": "└",
-      "bottom-right": "┘",
-      left: "│",
-      "left-mid": "├",
-      mid: "─",
-      "mid-mid": "┼",
-      right: "│",
-      "right-mid": "┤",
-      middle: "│",
-    },
-  });
 
-  for (const fav of favorites) {
-    table.push([chalk.yellow(icons.star), chalk.cyanBright.bold(fav.name), chalk.dim(fav.subscriptionId)]);
-  }
+  const headers = ["", chalk.cyan.bold("Subscription Name"), chalk.cyan.bold("Subscription ID")];
 
-  console.log(table.toString());
+  const rows = favorites.map((fav) => [chalk.yellow(icons.star), chalk.cyanBright.bold(fav.name), chalk.dim(fav.subscriptionId)]);
+
+  console.log(drawTable(headers, rows));
 };

@@ -506,7 +506,7 @@ azpim/
 The codebase follows a layered module structure:
 
 - **`core/`** — Zero-dependency utilities shared across the entire project. `json-store.ts` provides a generic load/save pattern used by all data persistence files. `errors.ts` centralizes error extraction and command-level error handling. `constants.ts` eliminates magic values.
-- **`azure/`** — Thin wrappers around Azure SDKs (`@azure/identity`, `@azure/arm-authorization`, Microsoft Graph). No UI logic.
+- **`azure/`** — Thin wrappers around Azure SDKs (`@azure/identity`, `@azure/arm-authorization`) and a lightweight Microsoft Graph `/me` call via native `fetch`. No UI logic.
 - **`data/`** — Local file persistence (favorites, presets, subscription cache, update state). All use `json-store` for consistent file I/O.
 - **`cli/`** — User-facing interactive flows and command scaffolding. `command-handler.ts` provides a `withCommandHandler` wrapper that eliminates boilerplate (auth, UI setup, error handling) across all Commander commands. Activation and deactivation flows share a `selectSubscriptionInteractive` function from `subscription-selector.ts`.
 
