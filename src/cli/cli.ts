@@ -5,12 +5,14 @@ import { DURATION_MAX_HOURS, DURATION_MIN_HOURS } from "../core/constants";
 import { icons, logBlank, logDim, showDivider } from "../core/ui";
 import { handleActivation } from "./activate-flow";
 import { handleDeactivation } from "./deactivate-flow";
+import { handleExtension } from "./extend-flow";
 import { runFavoritesManager } from "./favorites-manager";
 import { runPresetsManager } from "./presets-cli";
 
 // Re-export types and functions that index.ts depends on
 export { activateOnce, handleActivation, type ActivateOnceOptions, type ActivateOnceResult } from "./activate-flow";
 export { deactivateOnce, handleDeactivation, type DeactivateOnceOptions, type DeactivateOnceResult } from "./deactivate-flow";
+export { extendOnce, handleExtension, type ExtendOnceOptions, type ExtendOnceResult } from "./extend-flow";
 export { runFavoritesManager } from "./favorites-manager";
 export type { SubscriptionSelectResult } from "./subscription-selector";
 
@@ -57,7 +59,7 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
     showDivider();
     logBlank();
     const { action } = await inquirer.prompt<{
-      action: "activate" | "deactivate" | "favorites" | "presets" | "exit";
+      action: "activate" | "deactivate" | "extend" | "favorites" | "presets" | "exit";
     }>([
       {
         type: "select",
@@ -71,6 +73,10 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
           {
             name: chalk.yellow(`${icons.stop} Deactivate Role(s)`),
             value: "deactivate",
+          },
+          {
+            name: chalk.cyan(`${icons.arrowUp} Extend Role(s)`),
+            value: "extend",
           },
           {
             name: chalk.yellow(`${icons.star} Favorites...`),
@@ -89,6 +95,9 @@ export const showMainMenu = async (authContext: AuthContext): Promise<void> => {
         break;
       case "deactivate":
         await handleDeactivation(authContext);
+        break;
+      case "extend":
+        await handleExtension(authContext);
         break;
       case "favorites":
         await runFavoritesManager(authContext);

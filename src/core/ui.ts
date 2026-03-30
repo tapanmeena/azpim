@@ -356,6 +356,53 @@ export const showDivider = (): void => {
 };
 
 /**
+ * Calculates time remaining until expiration.
+ * Returns an object with milliseconds, formatted string, and warning level.
+ */
+export const calculateTimeRemaining = (
+  endDateTime: string,
+): {
+  ms: number;
+  formatted: string;
+  warningLevel: "critical" | "alert" | "normal" | "expired";
+} => {
+  const now = Date.now();
+  const end = new Date(endDateTime).getTime();
+  const ms = end - now;
+
+  if (ms <= 0) {
+    return { ms, formatted: "Expired", warningLevel: "expired" };
+  }
+
+  // Calculate hours and minutes
+  const totalMinutes = Math.floor(ms / (60 * 1000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  let formatted: string;
+  if (hours > 0) {
+    formatted = `${hours}h ${minutes}m`;
+  } else {
+    formatted = `${minutes}m`;
+  }
+
+  // Determine warning level (using constants from constants.ts)
+  const CRITICAL_MS = 30 * 60 * 1000; // 30 minutes
+  const ALERT_MS = 60 * 60 * 1000; // 1 hour
+
+  let warningLevel: "critical" | "alert" | "normal" | "expired";
+  if (ms <= CRITICAL_MS) {
+    warningLevel = "critical";
+  } else if (ms <= ALERT_MS) {
+    warningLevel = "alert";
+  } else {
+    warningLevel = "normal";
+  }
+
+  return { ms, formatted, warningLevel };
+};
+
+/**
  * Formats a role display string.
  */
 export const formatRole = (roleName: string, scopeDisplayName: string): string => {
@@ -364,12 +411,40 @@ export const formatRole = (roleName: string, scopeDisplayName: string): string =
 
 /**
  * Formats an active role display string with additional metadata.
+ * Now includes expiration time with color-coded warnings.
  */
-export const formatActiveRole = (roleName: string, scopeDisplayName: string, subscriptionName: string, startDateTime: string): string => {
+export const formatActiveRole = (
+  roleName: string,
+  scopeDisplayName: string,
+  subscriptionName: string,
+  startDateTime: string,
+  endDateTime?: string,
+): string => {
   const startDate = new Date(startDateTime).toLocaleString();
-  return `${chalk.white.bold(roleName)} ${chalk.dim("@")} ${chalk.cyan(scopeDisplayName)} ${chalk.dim(`(${subscriptionName})`)} ${chalk.dim(
-    `[Started: ${startDate}]`,
-  )}`;
+  const baseInfo = `${chalk.white.bold(roleName)} ${chalk.dim("@")} ${chalk.cyan(scopeDisplayName)} ${chalk.dim(`(${subscriptionName})`)} ${chalk.dim(`[Started: ${startDate}]`)}`;
+
+  if (!endDateTime) {
+    return baseInfo;
+  }
+
+  const timeRemaining = calculateTimeRemaining(endDateTime);
+  let expirationText: string;
+
+  switch (timeRemaining.warningLevel) {
+    case "expired":
+      expirationText = chalk.red.bold(`[EXPIRED]`);
+      break;
+    case "critical":
+      expirationText = chalk.red.bold(`[Expires in ${timeRemaining.formatted}]`);
+      break;
+    case "alert":
+      expirationText = chalk.yellow.bold(`[Expires in ${timeRemaining.formatted}]`);
+      break;
+    default:
+      expirationText = chalk.dim(`[Expires in ${timeRemaining.formatted}]`);
+  }
+
+  return `${baseInfo} ${expirationText}`;
 };
 
 /**

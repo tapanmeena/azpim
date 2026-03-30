@@ -69,6 +69,16 @@ export interface AzureDeactivationRequest {
   roleName?: string;
 }
 
+export interface AzureExtensionRequest {
+  roleEligibilityScheduleId: string;
+  roleDefinitionId: string;
+  roleName: string;
+  scope: string;
+  principalId: string;
+  justification: string;
+  durationHours: number;
+}
+
 export type FetchSubscriptionsOptions = {
   forceRefresh?: boolean;
 };
@@ -375,6 +385,99 @@ export const deactivateAzureRole = async (credential: AzureCliCredential, reques
       message: (error as Error)?.message,
     });
     failSpinner(`Failed to deactivate "${displayName}"`);
+    throw error;
+  }
+};
+
+export const extendAzureRole = async (
+  credential: AzureCliCredential,
+  request: AzureExtensionRequest,
+  subscriptionId: string,
+): Promise<{ status?: string }> => {
+  logDebug("Creating AuthorizationManagementClient for extension...", {
+    subscriptionId,
+  });
+  const client = new AuthorizationManagementClient(credential, subscriptionId);
+  const requestName = randomUUID();
+  const now = new Date();
+  const durationISO = `PT${request.durationHours}H`;
+
+  const linkedScheduleId = request.roleEligibilityScheduleId.includes("/")
+    ? request.roleEligibilityScheduleId
+    : `${request.scope}/providers/Microsoft.Authorization/roleEligibilitySchedules/${request.roleEligibilityScheduleId}`;
+
+  const requestBody = {
+    principalId: request.principalId,
+    roleDefinitionId: request.roleDefinitionId,
+    requestType: "SelfActivate",
+    linkedRoleEligibilityScheduleId: linkedScheduleId,
+    scheduleInfo: {
+      startDateTime: now,
+      expiration: {
+        type: "AfterDuration",
+        duration: durationISO,
+      },
+    },
+    justification: request.justification,
+  };
+
+  logDebug("Submitting extension request", {
+    scope: request.scope,
+    roleName: request.roleName,
+    requestName,
+    durationISO,
+    requestType: "SelfActivate",
+  });
+
+  startSpinner(`Extending role "${request.roleName}"...`);
+
+  try {
+    const response = await client.roleAssignmentScheduleRequests.create(request.scope, requestName, requestBody);
+
+    logDebug("Extension response received", {
+      status: response.status,
+      id: response.id,
+      roleName: request.roleName,
+    });
+
+    succeedSpinner(`Extension request submitted for "${request.roleName}"`);
+    logBlank();
+
+    if (response.status) {
+      logDim(`   Status: ${formatStatus(response.status)}`);
+    }
+
+    if (response.status === "Approved" || response.status === "Provisioned") {
+      logSuccess(`Role "${request.roleName}" has been extended successfully`);
+    } else if (response.status === "Denied") {
+      logError(`Role extension for "${request.roleName}" has been denied`);
+    } else if (response.status === "PendingApproval") {
+      logWarning(`Role extension for "${request.roleName}" is pending approval`);
+    }
+
+    return { status: response.status };
+  } catch (error) {
+    const err = error as Record<string, unknown>;
+    logDebug("Extension error", {
+      roleName: request.roleName,
+      errorType: err?.constructor?.name,
+      statusCode: err?.statusCode,
+      code: err?.code,
+      message: (error as Error)?.message,
+    });
+    failSpinner(`Failed to extend role "${request.roleName}"`);
+
+    // Provide helpful guidance for specific error codes
+    const errorCode = err?.code as string | undefined;
+    const errorMessage = (error as Error)?.message || "";
+
+    if (errorCode === "RoleAssignmentRequestPolicyValidationFailed" && errorMessage.includes("ExpirationRule")) {
+      logBlank();
+      logError(`The requested duration of ${request.durationHours} hour(s) exceeds the maximum allowed by the PIM policy for this role.`);
+      logDim(`   Try extending with a shorter duration (e.g., --duration 4 or --duration 1)`);
+      logDim(`   or check the role's PIM settings in the Azure portal to see the maximum allowed duration.`);
+    }
+
     throw error;
   }
 };

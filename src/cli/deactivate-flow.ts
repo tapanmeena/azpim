@@ -152,7 +152,7 @@ export const deactivateOnce = async (authContext: AuthContext, options: Deactiva
           name: "selectedIds",
           message: chalk.cyan(`Select matches for "${name}":`),
           choices: matches.map((r) => ({
-            name: formatActiveRole(r.roleName, r.scopeDisplayName, r.subscriptionName, r.startDateTime),
+            name: formatActiveRole(r.roleName, r.scopeDisplayName, r.subscriptionName, r.startDateTime, r.endDateTime),
             value: r.id,
           })),
           validate: (answer) => {
@@ -353,7 +353,7 @@ export const handleDeactivation = async (authContext: AuthContext): Promise<void
             value: SENTINEL_BACK,
           },
           ...activeAzureRoles.map((role) => ({
-            name: formatActiveRole(role.roleName, role.scopeDisplayName, role.subscriptionName, role.startDateTime),
+            name: formatActiveRole(role.roleName, role.scopeDisplayName, role.subscriptionName, role.startDateTime, role.endDateTime),
             value: role.id,
             checked: false,
           })),
