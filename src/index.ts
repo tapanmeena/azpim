@@ -4,7 +4,7 @@ import { Command } from "commander";
 import inquirer from "inquirer";
 import { name as npmPackageName, version } from "../package.json";
 import { authenticate } from "./azure/auth";
-import { activateOnce, deactivateOnce, showMainMenu } from "./cli/cli";
+import { activateOnce, deactivateOnce, extendOnce, showMainMenu } from "./cli/cli";
 import { type AuthenticatedCommandContext, withCommandHandler } from "./cli/command-handler";
 import { runPresetAddWizard, runPresetEditWizard } from "./cli/presets-cli";
 import { handleCommandError, type OutputFormat } from "./core/errors";
@@ -63,6 +63,20 @@ type ActivateCommandOptions = {
 type DeactivateCommandOptions = {
   subscriptionId?: string;
   roleName?: string[];
+  justification?: string;
+  preset?: string;
+  nonInteractive?: boolean;
+  yes?: boolean;
+  allowMultiple?: boolean;
+  dryRun?: boolean;
+  output?: OutputFormat;
+  quiet?: boolean;
+};
+
+type ExtendCommandOptions = {
+  subscriptionId?: string;
+  roleName?: string[];
+  durationHours?: number;
   justification?: string;
   preset?: string;
   nonInteractive?: boolean;
@@ -299,6 +313,60 @@ program
         nonInteractive: cmd.nonInteractive,
         yes: cmd.yes,
         allowMultiple: effectiveAllowMultiple,
+      });
+
+      if (output === "json") {
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      }
+    }),
+  );
+
+program
+  .command("extend")
+  .description("Extend an active role in Azure PIM")
+  .alias("e")
+  .option("--subscription-id <id>", "Azure subscription ID (optional; if omitted, searches all subscriptions)")
+  .option(
+    "--role-name <name>",
+    "Role name to extend (can be repeated). In --non-interactive mode, ambiguous matches error unless --allow-multiple is set.",
+    (value: string, previous: string[] | undefined) => {
+      const list = previous ?? [];
+      list.push(value);
+      return list;
+    },
+    [],
+  )
+  .option("--duration-hours <hours>", "Extension duration in hours (1-8)", Number.parseFloat)
+  .option("--justification <text>", "Justification for extension")
+  .option("--non-interactive", "Do not prompt; require flags to be unambiguous")
+  .option("-y, --yes", "Skip confirmation prompt")
+  .option("--allow-multiple", "Allow extending multiple active matches for a role name")
+  .option("--dry-run", "Resolve targets and print summary without submitting extension requests")
+  .option("--output <text|json>", "Output format", "text")
+  .option("--quiet", "Suppress non-essential output (recommended with --output json)")
+  .action(
+    withCommandHandler<ExtendCommandOptions>(program, async (cmd, ctx, command) => {
+      const { output, authContext } = ctx as AuthenticatedCommandContext;
+
+      await maybeNotifyUpdate(output, ctx.quiet);
+
+      const requestedRoleNames = cmd.roleName ?? [];
+      const wantsOneShot = Boolean(cmd.nonInteractive || cmd.subscriptionId || requestedRoleNames.length > 0 || cmd.dryRun);
+
+      if (!wantsOneShot) {
+        await showMainMenu(authContext);
+        return;
+      }
+
+      const result = await extendOnce(authContext, {
+        subscriptionId: cmd.subscriptionId ?? "",
+        roleNames: requestedRoleNames,
+        durationHours: cmd.durationHours,
+        justification: cmd.justification,
+        dryRun: cmd.dryRun,
+        nonInteractive: cmd.nonInteractive,
+        yes: cmd.yes,
+        allowMultiple: cmd.allowMultiple,
       });
 
       if (output === "json") {

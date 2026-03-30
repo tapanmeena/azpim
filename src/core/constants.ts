@@ -4,6 +4,7 @@
 
 export const DEFAULT_JUSTIFICATION_ACTIVATE = "Activated via azpim";
 export const DEFAULT_JUSTIFICATION_DEACTIVATE = "Deactivated via azpim";
+export const DEFAULT_JUSTIFICATION_EXTEND = "Extended via azpim";
 export const DEFAULT_DURATION_HOURS = 8;
 
 // ===============================
@@ -31,3 +32,10 @@ export const SENTINEL_BACK = "__BACK__";
 // ===============================
 
 export const PIM_FILTER_AS_TARGET = "asTarget()";
+
+// ===============================
+// Expiration Warning Thresholds (in milliseconds)
+// ===============================
+
+export const EXPIRATION_WARNING_CRITICAL_MS = 30 * 60 * 1000; // 30 minutes
+export const EXPIRATION_WARNING_ALERT_MS = 60 * 60 * 1000; // 1 hour

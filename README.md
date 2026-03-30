@@ -11,10 +11,12 @@ A command-line interface tool for managing Azure Privileged Identity Management 
 
 - 🔐 **Role Activation** - Quickly activate eligible Azure PIM roles
 - 🔓 **Role Deactivation** - Deactivate active roles when no longer needed
+- ⏱️ **Role Extension** - Extend active roles before they expire with visual expiration warnings
 - 📋 **Interactive Menu** - User-friendly menu-driven interface
 - ✨ **Beautiful UI** - Polished terminal experience with spinners and colors
-- 🔄 **Multi-role Support** - Activate or deactivate multiple roles at once
-- 📊 **Status Tracking** - Real-time feedback on activation/deactivation status
+- 🔄 **Multi-role Support** - Activate, deactivate, or extend multiple roles at once
+- 📊 **Status Tracking** - Real-time feedback on activation/deactivation/extension status
+- ⚠️ **Expiration Warnings** - Color-coded visual alerts when roles are expiring (red < 30min, yellow < 1hr)
 - 💾 **Presets** - Save and reuse activation/deactivation configurations
 - ⭐ **Favorites** - Mark subscriptions as favorites for quick access
 - 🗃️ **Subscription Cache** - Automatic caching of subscriptions (6-hour TTL) for faster startup
@@ -96,6 +98,7 @@ azpim
 # Or with specific commands
 azpim activate
 azpim deactivate
+azpim extend
 azpim preset list
 azpim update
 
@@ -109,6 +112,7 @@ pnpm dev
 | -------------- | ------------------- | -------------------------------------- |
 | `activate`     | `a`                 | Activate a role in Azure PIM (default) |
 | `deactivate`   | `d`                 | Deactivate a role in Azure PIM         |
+| `extend`       | `e`                 | Extend an active role in Azure PIM     |
 | `preset`       | -                   | Manage reusable presets                |
 | `favorites`    | `fav`               | Manage favorite subscriptions          |
 | `check-update` | `update`, `upgrade` | Check for a newer version              |
@@ -214,9 +218,35 @@ azpim deactivate --non-interactive --yes \
    --allow-multiple
 ```
 
+#### Extension Examples
+
+```bash
+# Extend specific role (interactive - shows expiration warnings)
+azpim extend
+
+# Extend specific role with CLI flags
+azpim extend --non-interactive --yes \
+   --subscription-id <SUBSCRIPTION_GUID> \
+   --role-name "Contributor" \
+   --duration-hours 4 \
+   --justification "Continuing maintenance work"
+
+# Extend multiple roles
+azpim extend --non-interactive --yes \
+   --role-name "Contributor" \
+   --role-name "Reader" \
+   --allow-multiple \
+   --duration-hours 8
+
+# Preview extension without submitting
+azpim extend --dry-run \
+   --subscription-id <SUBSCRIPTION_GUID> \
+   --role-name "Owner"
+```
+
 #### Available Flags
 
-**Common flags (activate/deactivate):**
+**Common flags (activate/deactivate/extend):**
 
 - `--non-interactive` - Disable interactive prompts
 - `-y, --yes` - Skip confirmation prompts
@@ -231,6 +261,11 @@ azpim deactivate --non-interactive --yes \
 
 - `--duration-hours <n>` - Duration (1-8 hours, default varies by role)
 - `--justification <text>` - Justification for activation
+
+**Extension-specific:**
+
+- `--duration-hours <n>` - Extension duration (1-8 hours, default: 8)
+- `--justification <text>` - Justification for extension
 
 **Deactivation-specific:**
 
